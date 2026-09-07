@@ -1032,7 +1032,13 @@
         const cell = el("button", cls.join(" "), String(day));
         cell.type = "button";
         if (hasData) {
-          cell.addEventListener("click", () => onDayClick(dstr));
+          cell.addEventListener("click", (e) => {
+            // 이 클릭으로 캘린더가 다시 그려지면서 클릭된 버튼 자신이 DOM에서
+            // 제거되므로, 버블링을 막지 않으면 document의 "바깥 클릭 감지"
+            // 핸들러가 detached된 e.target을 보고 팝오버를 즉시 닫아버린다.
+            e.stopPropagation();
+            onDayClick(dstr);
+          });
         } else {
           cell.disabled = true;
         }
