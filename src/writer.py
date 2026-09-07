@@ -1,10 +1,16 @@
 """정규화된 주문 라인을 협력사별 엑셀 양식(templates/*.xlsx)에 채워 넣는다."""
 import json
+from collections import Counter
 from copy import copy
 from pathlib import Path
 
 import openpyxl
-from openpyxl.styles import Font
+from openpyxl.styles import Font, PatternFill
+
+# 행 강조 색상: 수량 2개 이상 / 동일 수령인+주소 중복 / 둘 다 해당 시 각각 다른 색으로 구분
+QTY_FILL = PatternFill(fill_type="solid", start_color="FFF9E48B", end_color="FFF9E48B")
+DUP_FILL = PatternFill(fill_type="solid", start_color="FFBFE0F5", end_color="FFBFE0F5")
+BOTH_FILL = PatternFill(fill_type="solid", start_color="FFF7C592", end_color="FFF7C592")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -106,6 +112,27 @@ def _find_col_by_kind(col_map, predicate):
     return None
 
 
+def _dup_key(rec):
+    name = (rec.get("receiver_name") or "").strip().casefold()
+    addr = (rec.get("address") or "").strip().casefold()
+    if not name or not addr:
+        return None
+    return (name, addr)
+
+
+def _highlight_fill_for(rec, dup_counts):
+    is_qty = (rec.get("quantity") or 1) > 1
+    key = _dup_key(rec)
+    is_dup = key is not None and dup_counts[key] >= 2
+    if is_qty and is_dup:
+        return BOTH_FILL
+    if is_qty:
+        return QTY_FILL
+    if is_dup:
+        return DUP_FILL
+    return None
+
+
 def write_vendor_file(vendor_name, rows, out_path):
     """vendor_name 협력사 양식 템플릿을 복사해 rows(표준 필드 dict 리스트)를 채운다."""
     cfg = VENDORS[vendor_name]
@@ -116,6 +143,9 @@ def write_vendor_file(vendor_name, rows, out_path):
     col_map = _build_col_map(ws, cfg)
     data_start = cfg["data_start_row"]
     styles = _capture_row_style(ws, data_start, ws.max_column)
+
+    dup_counts = Counter(k for k in (_dup_key(r) for r in rows) if k is not None)
+    highlight_counts = {"quantity": 0, "duplicate_address": 0, "both": 0}
 
     seen_orders = set()
     for i, rec in enumerate(rows):
@@ -144,6 +174,17 @@ def write_vendor_file(vendor_name, rows, out_path):
                 if not (spec[0] == "field" and spec[1] == "order_date"):
                     cell.number_format = st["number_format"]
 
+        fill = _highlight_fill_for(rec, dup_counts)
+        if fill is QTY_FILL:
+            highlight_counts["quantity"] += 1
+        elif fill is DUP_FILL:
+            highlight_counts["duplicate_address"] += 1
+        elif fill is BOTH_FILL:
+            highlight_counts["both"] += 1
+        if fill is not None:
+            for c in range(1, ws.max_column + 1):
+                ws.cell(row=r, column=c).fill = fill
+
     if cfg.get("template_family") == "consignment_v1" and "summary_row" in cfg:
         sr = cfg["summary_row"]
         shipment_col = _find_col_by_kind(col_map, lambda s: s[0] == "shipment_flag")
@@ -158,7 +199,7 @@ def write_vendor_file(vendor_name, rows, out_path):
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(out_path)
-    return out_path
+    return out_path, highlight_counts
 
 
 _REVIEW_HEADERS = [

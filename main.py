@@ -15,6 +15,7 @@ from src.classify import classify_vendor
 from src.writer import VENDORS, write_vendor_file, write_review_file
 from src.summary import compute_summary
 from src.dashboard import render_dashboard_html
+from src.reconcile import check_no_omission, collect_special_notes, collect_missing_info
 
 
 def run(input_paths, out_dir):
@@ -42,11 +43,22 @@ def run(input_paths, out_dir):
     run_date = date.today().isoformat()
 
     written = []
+    highlight_totals = {"quantity": 0, "duplicate_address": 0, "both": 0}
     for vendor, rows in by_vendor.items():
         out_path = out_dir / f"{vendor}_{run_date}.xlsx"
-        write_vendor_file(vendor, rows, out_path)
+        _, highlight_counts = write_vendor_file(vendor, rows, out_path)
         written.append(out_path)
-        print(f"[작성] {vendor}: {len(rows)}건 -> {out_path}")
+        for k, v in highlight_counts.items():
+            highlight_totals[k] += v
+        marks = []
+        if highlight_counts["quantity"]:
+            marks.append(f"수량다수 {highlight_counts['quantity']}건")
+        if highlight_counts["duplicate_address"]:
+            marks.append(f"동일수령인·주소 {highlight_counts['duplicate_address']}건")
+        if highlight_counts["both"]:
+            marks.append(f"둘다 해당 {highlight_counts['both']}건")
+        mark_note = f" ({', '.join(marks)} 강조표시)" if marks else ""
+        print(f"[작성] {vendor}: {len(rows)}건 -> {out_path}{mark_note}")
 
     review_path = None
     if unclassified or ambiguous:
@@ -54,10 +66,33 @@ def run(input_paths, out_dir):
         write_review_file(unclassified, ambiguous, review_path)
         print(f"[확인 필요] 미분류 {len(unclassified)}건, 중복매칭 {len(ambiguous)}건 -> {review_path}")
 
-    summary = compute_summary(all_rows, by_vendor, unclassified, ambiguous, run_date)
+    # --- 원본 대조: 누락 건 및 특이사항 조사 ---
+    reconciliation = check_no_omission(all_rows, by_vendor, unclassified, ambiguous)
+    if reconciliation["match"]:
+        print(f"[대조] 원본 {reconciliation['raw_count']}건 = 처리 {reconciliation['processed_count']}건 (누락 없음)")
+    else:
+        print(
+            f"[대조] ⚠ 원본 {reconciliation['raw_count']}건 vs 처리 {reconciliation['processed_count']}건 "
+            "불일치 — 코드 확인 필요"
+        )
+
+    special_notes = collect_special_notes(all_rows)
+    missing_info = collect_missing_info(all_rows)
+    if special_notes:
+        print(f"[특이사항] 배송메시지 있는 주문 {len(special_notes)}건")
+    if missing_info:
+        print(f"[정보누락] 수령인명/연락처/주소 중 빠진 주문 {len(missing_info)}건")
+
+    summary = compute_summary(
+        all_rows, by_vendor, unclassified, ambiguous, run_date,
+        reconciliation=reconciliation,
+        special_notes=special_notes,
+        missing_info=missing_info,
+        highlight_totals=highlight_totals,
+    )
     summary_path = out_dir / f"summary_{run_date}.json"
     with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+        json.dump(summary, f, ensure_ascii=False, indent=2, default=str)
     print(f"[요약] 전체 주문 {summary['total_order_count']}건 -> {summary_path}")
 
     dashboard_path = out_dir / f"dashboard_{run_date}.html"

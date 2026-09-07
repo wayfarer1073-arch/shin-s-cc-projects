@@ -97,15 +97,16 @@ def read_market_file(path):
 
     rows = []
     for r in range(header_row + 1, ws.max_row + 1):
-        raw = {}
-        any_value = False
-        for c, field in col_field.items():
-            v = ws.cell(row=r, column=c).value
-            if v not in (None, ""):
-                any_value = True
-            raw[field] = v
+        # 매핑되지 않은 컬럼에만 값이 있는 행도 "실제 주문 라인"으로 잡히도록,
+        # 행 전체(매핑 여부 무관)를 기준으로 빈 행을 판단한다. 매핑된 필드만 보면
+        # 원본에는 있는 라인이 조용히 누락될 수 있다.
+        any_value = any(
+            ws.cell(row=r, column=c).value not in (None, "")
+            for c in range(1, ws.max_column + 1)
+        )
         if not any_value:
             continue
+        raw = {field: ws.cell(row=r, column=c).value for c, field in col_field.items()}
 
         rec = {field: raw.get(field) for field in CANONICAL_FIELDS}
         rec["receiver_phone"] = _normalize_phone(rec.get("receiver_phone"))

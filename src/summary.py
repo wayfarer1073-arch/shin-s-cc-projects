@@ -19,7 +19,10 @@ def _distinct_order_counts(rows_by_group):
     return counts
 
 
-def compute_summary(all_rows, by_vendor, unclassified, ambiguous, run_date):
+def compute_summary(
+    all_rows, by_vendor, unclassified, ambiguous, run_date,
+    reconciliation=None, special_notes=None, missing_info=None, highlight_totals=None,
+):
     by_market = defaultdict(list)
     for rec in all_rows:
         market = rec.get("shop_name") or rec.get("_source_file") or "(알수없음)"
@@ -65,4 +68,8 @@ def compute_summary(all_rows, by_vendor, unclassified, ambiguous, run_date):
         "top5_products": top5_products,
         "total_revenue": total_revenue,
         "revenue_missing_count": revenue_missing_count,
+        "reconciliation": reconciliation or {},
+        "special_notes": special_notes or [],
+        "missing_info": missing_info or [],
+        "highlight_totals": highlight_totals or {"quantity": 0, "duplicate_address": 0, "both": 0},
     }

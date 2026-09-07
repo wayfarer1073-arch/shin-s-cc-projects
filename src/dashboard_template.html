@@ -20,6 +20,12 @@
     --warn-text:   #7a5200;
     --warn-soft:   #fdecc4;
     --good:        #0ca30c;
+    --good-soft:   #e2f6e2;
+    --critical:    #d03b3b;
+    --critical-soft: #fbe3e2;
+    --hl-qty:      #f9e48b;
+    --hl-dup:      #bfe0f5;
+    --hl-both:     #f7c592;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -41,6 +47,9 @@
       --warn-text:   #ffd77a;
       --warn-soft:   #3a2d08;
       --good:        #0ca30c;
+      --good-soft:   #123018;
+      --critical:    #e66767;
+      --critical-soft: #3a1414;
     }
   }
   :root[data-theme="dark"] {
@@ -62,6 +71,9 @@
     --warn-text:   #ffd77a;
     --warn-soft:   #3a2d08;
     --good:        #0ca30c;
+    --good-soft:   #123018;
+    --critical:    #e66767;
+    --critical-soft: #3a1414;
   }
 
   * { box-sizing: border-box; }
@@ -290,12 +302,83 @@
     color: var(--text-muted);
     padding: 10px 0;
   }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px 4px 8px;
+    border-radius: 999px;
+  }
+  .status-chip.good { color: var(--good); background: var(--good-soft); }
+  .status-chip.critical { color: var(--critical); background: var(--critical-soft); }
+  .status-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .report {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px 20px;
+    margin-bottom: 14px;
+  }
+  .report h2 { font-size: 14px; font-weight: 700; margin: 0 0 4px; }
+  .report .sub { font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+
+  .legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border-radius: 10px;
+    margin-bottom: 16px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--text-2);
+  }
+  .legend-swatch { width: 13px; height: 13px; border-radius: 3px; flex: none; }
+
+  .note-block { margin-top: 14px; }
+  .note-block:first-child { margin-top: 0; }
+  .note-block h3 {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-2);
+    margin: 0 0 8px;
+  }
+  .note-list {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--grid);
+    border-radius: 8px;
+  }
+  .note-item {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 10px;
+    padding: 9px 12px;
+    font-size: 12.5px;
+    border-top: 1px solid var(--grid);
+  }
+  .note-item:first-child { border-top: none; }
+  .note-item .n-who { color: var(--text-1); font-weight: 500; }
+  .note-item .n-what { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note-item .n-flag { color: var(--critical); font-weight: 600; text-align: right; }
 </style>
 
 <div class="wrap">
   <header class="top">
     <h1>주문 처리 대시보드</h1>
-    <div class="run-date" id="runDate"></div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div class="run-date" id="runDate"></div>
+      <div id="reconChip"></div>
+    </div>
   </header>
 
   <div class="hero-revenue" id="heroRevenue"></div>
@@ -319,6 +402,26 @@
     <h2>TOP 5 판매 제품</h2>
     <p class="sub">전체 마켓 합산 판매수량 기준</p>
     <div id="top5"></div>
+  </section>
+
+  <section class="report">
+    <h2>작업 완료 리포트</h2>
+    <p class="sub">원본 대조 결과 및 협력사 엑셀 강조 표시 안내</p>
+
+    <div class="legend-row">
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--hl-qty)"></span><span id="legendQty"></span></div>
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--hl-dup)"></span><span id="legendDup"></span></div>
+      <div class="legend-item"><span class="legend-swatch" style="background:var(--hl-both)"></span><span id="legendBoth"></span></div>
+    </div>
+
+    <div class="note-block">
+      <h3 id="notesTitle">특이사항 (배송메시지)</h3>
+      <div class="note-list" id="notesList"></div>
+    </div>
+    <div class="note-block">
+      <h3 id="missingTitle">정보 누락 확인 필요</h3>
+      <div class="note-list" id="missingList"></div>
+    </div>
   </section>
 </div>
 
@@ -422,4 +525,52 @@
       top5El.appendChild(row);
     });
   }
+
+  // --- 대조 결과 칩 ---
+  const recon = data.reconciliation || {};
+  const reconChip = document.getElementById("reconChip");
+  if (recon.match) {
+    reconChip.appendChild(el(
+      "span", "status-chip good",
+      `<span class="dot"></span>원본 ${recon.raw_count}건 대조 완료 · 누락 없음`
+    ));
+  } else if (recon.raw_count != null) {
+    reconChip.appendChild(el(
+      "span", "status-chip critical",
+      `<span class="dot"></span>원본 ${recon.raw_count}건 vs 처리 ${recon.processed_count}건 불일치`
+    ));
+  }
+
+  // --- 강조 표시 범례 ---
+  const ht = data.highlight_totals || {};
+  document.getElementById("legendQty").textContent = `수량 2개 이상: ${ht.quantity || 0}건`;
+  document.getElementById("legendDup").textContent = `동일 수령인·주소 중복: ${ht.duplicate_address || 0}건`;
+  document.getElementById("legendBoth").textContent = `둘 다 해당: ${ht.both || 0}건`;
+
+  // --- 특이사항 / 정보 누락 리스트 ---
+  function renderNoteList(containerId, titleId, titleLabel, items, rowRenderer) {
+    const container = document.getElementById(containerId);
+    document.getElementById(titleId).textContent = `${titleLabel} (${items.length}건)`;
+    if (items.length === 0) {
+      container.appendChild(el("div", "empty-note", "해당 없음"));
+      return;
+    }
+    items.forEach(item => container.appendChild(rowRenderer(item)));
+  }
+
+  renderNoteList("notesList", "notesTitle", "특이사항 (배송메시지)", data.special_notes || [], (n) => {
+    const row = el("div", "note-item");
+    row.appendChild(el("div", "n-who", n.receiver_name || "-"));
+    row.appendChild(el("div", "n-what", `${n.product_name || ""} · ${n.message}`));
+    row.appendChild(el("div", "n-flag", n.order_id || ""));
+    return row;
+  });
+
+  renderNoteList("missingList", "missingTitle", "정보 누락 확인 필요", data.missing_info || [], (n) => {
+    const row = el("div", "note-item");
+    row.appendChild(el("div", "n-who", n.receiver_name || "(수령인명 없음)"));
+    row.appendChild(el("div", "n-what", n.product_name || ""));
+    row.appendChild(el("div", "n-flag", (n.missing_fields || []).join(", ") + " 없음"));
+    return row;
+  });
 </script>
