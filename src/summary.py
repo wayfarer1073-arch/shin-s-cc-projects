@@ -29,10 +29,12 @@ def compute_summary(all_rows, by_vendor, unclassified, ambiguous, run_date):
     vendor_order_counts = _distinct_order_counts(by_vendor)
 
     product_qty = Counter()
+    product_revenue = Counter()
     for rec in all_rows:
         key = rec.get("product_name") or "(상품명 없음)"
         product_qty[key] += rec.get("quantity") or 0
-    top5_products = [{"product_name": k, "quantity": v} for k, v in product_qty.most_common(5)]
+        if rec.get("payment_amount") is not None:
+            product_revenue[key] += rec["payment_amount"]
 
     all_order_ids = {r.get("order_id") for r in all_rows if r.get("order_id")}
     no_id_rows = sum(1 for r in all_rows if not r.get("order_id"))
@@ -40,6 +42,17 @@ def compute_summary(all_rows, by_vendor, unclassified, ambiguous, run_date):
     amounts = [r.get("payment_amount") for r in all_rows if r.get("payment_amount") is not None]
     total_revenue = sum(amounts)
     revenue_missing_count = len(all_rows) - len(amounts)
+
+    top5_products = []
+    for name, qty in product_qty.most_common(5):
+        revenue = product_revenue.get(name, 0)
+        share = round(revenue / total_revenue * 100, 1) if total_revenue else None
+        top5_products.append({
+            "product_name": name,
+            "quantity": qty,
+            "revenue": revenue,
+            "revenue_share_pct": share,
+        })
 
     return {
         "run_date": run_date,

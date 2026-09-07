@@ -260,6 +260,12 @@
     border-radius: 4px;
     background: var(--series-3);
   }
+  .lb-qty-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
   .lb-qty {
     font-size: 14px;
     font-weight: 800;
@@ -267,6 +273,17 @@
     white-space: nowrap;
   }
   .lb-qty .unit { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+  .lb-share {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .lb-share.muted { color: var(--text-muted); background: var(--surface-2); font-weight: 500; }
 
   .empty-note {
     font-size: 12.5px;
@@ -395,7 +412,13 @@
       track.appendChild(fill);
       main.appendChild(track);
       row.appendChild(main);
-      row.appendChild(el("div", "lb-qty", `${p.quantity}<span class="unit">개</span>`));
+
+      const qtyWrap = el("div", "lb-qty-wrap");
+      qtyWrap.appendChild(el("div", "lb-qty", `${p.quantity}<span class="unit">개</span>`));
+      const shareText = p.revenue_share_pct != null ? `매출 ${p.revenue_share_pct}%` : "매출 정보 없음";
+      qtyWrap.appendChild(el("div", "lb-share" + (p.revenue_share_pct == null ? " muted" : ""), shareText));
+      row.appendChild(qtyWrap);
+
       top5El.appendChild(row);
     });
   }
