@@ -1,0 +1,449 @@
+{
+  "naver_smartstore_guess": {
+    "market_guess": "naver_smartstore",
+    "note": "결제번호/채널상품번호/톡딜여부/도서산간 등 컬럼 구성으로 볼 때 네이버 스마트스토어 주문 원본으로 추정됨. 확인 필요.",
+    "columns": [
+      {
+        "col": "A",
+        "header": "결제번호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "B",
+        "header": "배송지/수신자정보 입력일",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "C",
+        "header": "주문상태",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "D",
+        "header": "주문번호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "E",
+        "header": "개인통관고유부호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "F",
+        "header": "채널상품번호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "G",
+        "header": "상품명",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "H",
+        "header": "옵션",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "I",
+        "header": "수량",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "J",
+        "header": "배송방법",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "K",
+        "header": "택배사코드",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "L",
+        "header": "송장번호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "M",
+        "header": "수령인명",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "N",
+        "header": "수령인연락처1",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "O",
+        "header": "하이픈포함 수령인연락처1",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "P",
+        "header": "수령인연락처2",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "Q",
+        "header": "하이픈포함 수령인연락처2",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "R",
+        "header": "배송지주소",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "S",
+        "header": "우편번호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "T",
+        "header": "배송메세지",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "U",
+        "header": "타입",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "V",
+        "header": "발송예정일",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "W",
+        "header": "배송지연출고일",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "X",
+        "header": "주문일",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "Y",
+        "header": "상품금액",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "Z",
+        "header": "옵션금액",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AA",
+        "header": "쿠폰정책번호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AB",
+        "header": "판매자할인금액",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AC",
+        "header": "판매자쿠폰할인금액",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AD",
+        "header": "정산기준금액",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AE",
+        "header": "기본수수료",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AF",
+        "header": "노출추가수수료",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AG",
+        "header": "추천리워드수수료",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AH",
+        "header": "수수료할인금액",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AI",
+        "header": "채널",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AJ",
+        "header": "브랜드",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AK",
+        "header": "모델명",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AL",
+        "header": "판매자상품번호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AM",
+        "header": "옵션코드",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AN",
+        "header": "최초배송비번호",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AO",
+        "header": "배송비지불방법",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AP",
+        "header": "기본배송비 유형",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AQ",
+        "header": "기본배송비 금액",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AR",
+        "header": "도서산간 주문 여부",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AS",
+        "header": "도서산간 추가 배송비 금액",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AT",
+        "header": "유입경로",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AU",
+        "header": "톡딜여부",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AV",
+        "header": "상품유형",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      },
+      {
+        "col": "AW",
+        "header": "biz판매여부 ",
+        "width": null,
+        "font_name": "맑은 고딕",
+        "font_size": 11.0,
+        "bold": false,
+        "fill": "00000000"
+      }
+    ]
+  }
+}
