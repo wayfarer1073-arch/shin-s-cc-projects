@@ -223,12 +223,33 @@
   }
   .cal-day.has-data { background: var(--accent-soft); font-weight: 600; }
   .cal-day.has-data:hover { background: var(--accent); color: #ffffff; }
-  .cal-day.selected { background: var(--accent); color: #ffffff; font-weight: 700; }
+  .cal-day.in-range { background: var(--accent-soft); border-radius: 0; font-weight: 600; }
+  .cal-day.range-edge, .cal-day.selected {
+    background: var(--accent);
+    color: #ffffff;
+    font-weight: 700;
+    border-radius: 7px;
+  }
+  .cal-day.pending-start {
+    background: var(--accent);
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
   .cal-day.empty-day, .cal-day.no-data {
     color: var(--text-muted);
     cursor: default;
     opacity: 0.45;
   }
+  .cal-hint {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--grid);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .cal-hint b { color: var(--accent); font-weight: 700; }
 
   .hero-revenue {
     background: linear-gradient(135deg, var(--accent) 0%, var(--series-3) 130%);
@@ -575,6 +596,7 @@
           <button class="cal-nav" id="calNext" type="button">›</button>
         </div>
         <div class="cal-grid" id="calGrid"></div>
+        <div class="cal-hint" id="calHint" hidden></div>
       </div>
     </div>
     <span class="range-note" id="rangeNote"></span>
@@ -915,6 +937,9 @@
   }
 
   function selectRange(allDocs, rangeKey, latestDate) {
+    if (rangeKey && typeof rangeKey === "object") {
+      return allDocs.filter(d => d.run_date >= rangeKey.start && d.run_date <= rangeKey.end);
+    }
     if (rangeKey === "today") {
       return allDocs.filter(d => d.run_date === toKey(latestDate));
     }
@@ -965,13 +990,15 @@
     const calGrid = document.getElementById("calGrid");
     const calPrev = document.getElementById("calPrev");
     const calNext = document.getElementById("calNext");
+    const calHint = document.getElementById("calHint");
 
     const availableDates = new Set(dates);
     const minD = parseDate(dates[0]);
     const maxD = latestDate;
     let calYear = maxD.getFullYear();
     let calMonth = maxD.getMonth();
-    let selectedDate = null;
+    let pendingStart = null;   // 두 번 클릭 중 첫 번째로 고른 날짜 (종료일 선택 대기 중)
+    let selectedRange = null;  // 완료된 선택 {start, end} — 팝오버 다시 열 때 표시용
 
     if (dbAvailable && dates.length > 1) {
       rangeBar.hidden = false;
@@ -996,19 +1023,41 @@
         const hasData = availableDates.has(dstr);
         const cls = ["cal-day"];
         if (hasData) cls.push("has-data"); else cls.push("no-data");
-        if (dstr === selectedDate) cls.push("selected");
+        if (pendingStart) {
+          if (dstr === pendingStart) cls.push("pending-start");
+        } else if (selectedRange) {
+          if (dstr >= selectedRange.start && dstr <= selectedRange.end) cls.push("in-range");
+          if (dstr === selectedRange.start || dstr === selectedRange.end) cls.push("range-edge");
+        }
         const cell = el("button", cls.join(" "), String(day));
         cell.type = "button";
         if (hasData) {
-          cell.addEventListener("click", () => {
-            calendarPop.hidden = true;
-            applySpecificDate(dstr);
-          });
+          cell.addEventListener("click", () => onDayClick(dstr));
         } else {
           cell.disabled = true;
         }
         calGrid.appendChild(cell);
       }
+
+      if (pendingStart) {
+        calHint.hidden = false;
+        calHint.innerHTML = `시작일 <b>${fmtDateLabel(pendingStart)}</b> 선택됨 · 종료일을 클릭하세요<br>(같은 날짜를 다시 누르면 하루만 조회)`;
+      } else {
+        calHint.hidden = true;
+      }
+    }
+
+    function onDayClick(dstr) {
+      if (pendingStart === null) {
+        pendingStart = dstr;
+        renderCalendar();
+        return;
+      }
+      let start = pendingStart, end = dstr;
+      if (start > end) { const t = start; start = end; end = t; }
+      pendingStart = null;
+      calendarPop.hidden = true;
+      applyCustomRange(start, end);
     }
 
     calPrev.addEventListener("click", () => {
@@ -1023,17 +1072,27 @@
     });
     dateBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      calendarPop.hidden = !calendarPop.hidden;
-      if (!calendarPop.hidden) renderCalendar();
+      if (calendarPop.hidden) {
+        calendarPop.hidden = false;
+        renderCalendar();
+      } else {
+        calendarPop.hidden = true;
+        pendingStart = null;
+      }
     });
     document.addEventListener("click", (e) => {
-      if (!document.getElementById("datePicker").contains(e.target)) calendarPop.hidden = true;
+      if (!document.getElementById("datePicker").contains(e.target) && !calendarPop.hidden) {
+        calendarPop.hidden = true;
+        pendingStart = null;
+      }
     });
 
     function apply(rangeKey) {
       document.querySelectorAll(".range-btn").forEach(b => b.classList.toggle("active", b.dataset.range === rangeKey));
       dateBtn.classList.remove("active");
-      selectedDate = null;
+      dateBtn.textContent = "📅 날짜 선택";
+      pendingStart = null;
+      selectedRange = null;
       const docs = selectRange(allDocs, rangeKey, latestDate);
       const agg = aggregate(docs);
       const labels = { today: "오늘", week: "최근 7일", month: "이번 달", quarter: "이번 분기" };
@@ -1048,14 +1107,19 @@
       renderView(agg, { isMulti: docs.length > 1, label });
     }
 
-    function applySpecificDate(dstr) {
+    function applyCustomRange(start, end) {
       document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
       dateBtn.classList.add("active");
-      selectedDate = dstr;
-      dateBtn.textContent = `📅 ${fmtDateLabel(dstr)}`;
-      const docs = selectRange(allDocs, dstr, latestDate);
+      selectedRange = { start, end };
+      dateBtn.textContent = start === end
+        ? `📅 ${fmtDateLabel(start)}`
+        : `📅 ${fmtShortDate(start)} ~ ${fmtShortDate(end)}`;
+      const docs = selectRange(allDocs, { start, end }, latestDate);
       const agg = aggregate(docs);
-      renderView(agg, { isMulti: false, label: `${fmtDateLabel(dstr)} 처리 결과` });
+      const label = start === end
+        ? `${fmtDateLabel(start)} 처리 결과`
+        : `${fmtDateLabel(start)} ~ ${fmtDateLabel(end)} 처리 결과`;
+      renderView(agg, { isMulti: docs.length > 1, label });
     }
 
     document.querySelectorAll(".range-btn").forEach(btn => {
