@@ -1,0 +1,358 @@
+<title>주문 처리 대시보드</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --page:        #f9f9f7;
+    --surface:     #fcfcfb;
+    --surface-2:   #f3f2ee;
+    --text-1:      #0b0b0b;
+    --text-2:      #52514e;
+    --text-muted:  #898781;
+    --grid:        #e1e0d9;
+    --border:      rgba(11,11,11,0.10);
+    --accent:      #2a78d6;
+    --accent-soft: #cde2fb;
+    --series-2:    #eb6834;
+    --series-2-soft: #fbdccb;
+    --series-3:    #1baf7a;
+    --warn:        #fab219;
+    --warn-text:   #7a5200;
+    --warn-soft:   #fdecc4;
+    --good:        #0ca30c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:        #0d0d0d;
+      --surface:     #1a1a19;
+      --surface-2:   #232322;
+      --text-1:      #ffffff;
+      --text-2:      #c3c2b7;
+      --text-muted:  #898781;
+      --grid:        #2c2c2a;
+      --border:      rgba(255,255,255,0.10);
+      --accent:      #3987e5;
+      --accent-soft: #184f95;
+      --series-2:    #d95926;
+      --series-2-soft: #5c2a10;
+      --series-3:    #199e70;
+      --warn:        #fab219;
+      --warn-text:   #ffd77a;
+      --warn-soft:   #3a2d08;
+      --good:        #0ca30c;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:        #0d0d0d;
+    --surface:     #1a1a19;
+    --surface-2:   #232322;
+    --text-1:      #ffffff;
+    --text-2:      #c3c2b7;
+    --text-muted:  #898781;
+    --grid:        #2c2c2a;
+    --border:      rgba(255,255,255,0.10);
+    --accent:      #3987e5;
+    --accent-soft: #184f95;
+    --series-2:    #d95926;
+    --series-2-soft: #5c2a10;
+    --series-3:    #199e70;
+    --warn:        #fab219;
+    --warn-text:   #ffd77a;
+    --warn-soft:   #3a2d08;
+    --good:        #0ca30c;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--page);
+    color: var(--text-1);
+    font-family: "Noto Sans KR", system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 20px 56px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  header.top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .run-date {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .tile .label {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .tile .value {
+    font-size: 26px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .tile .value.warn { color: var(--warn-text); }
+  .tile.chip-warn {
+    background: var(--warn-soft);
+    border-color: transparent;
+  }
+  .tile.chip-warn .label { color: var(--warn-text); opacity: 0.85; }
+
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  @media (max-width: 620px) {
+    .panels { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px 20px;
+  }
+  .panel h2 {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .panel .sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 16px;
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 84px 1fr 34px;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-top: 1px solid var(--grid);
+  }
+  .bar-row:first-of-type { border-top: none; }
+  .bar-row .name {
+    font-size: 12.5px;
+    color: var(--text-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bar-track {
+    position: relative;
+    height: 16px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: 8px;
+    background: var(--accent);
+  }
+  .panel.vendor .bar-fill { background: var(--series-2); }
+  .bar-row .count {
+    font-size: 13px;
+    font-weight: 700;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .leaderboard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px 20px;
+  }
+  .leaderboard h2 { font-size: 14px; font-weight: 700; margin: 0 0 4px; }
+  .leaderboard .sub { font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+  .lb-row {
+    display: grid;
+    grid-template-columns: 26px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--grid);
+  }
+  .lb-row:first-of-type { border-top: none; }
+  .lb-rank {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .lb-row:nth-of-type(1) .lb-rank { color: var(--accent); }
+  .lb-main .lb-name {
+    font-size: 13.5px;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+  .lb-track {
+    height: 8px;
+    background: var(--surface-2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .lb-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: var(--series-3);
+  }
+  .lb-qty {
+    font-size: 14px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .lb-qty .unit { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
+
+  .empty-note {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    padding: 10px 0;
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>주문 처리 대시보드</h1>
+    <div class="run-date" id="runDate"></div>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="panels">
+    <section class="panel market">
+      <h2>오픈마켓별 주문 건수</h2>
+      <p class="sub">고유 주문번호 기준</p>
+      <div id="marketBars"></div>
+    </section>
+    <section class="panel vendor">
+      <h2>협력사별 주문 건수</h2>
+      <p class="sub">분류 완료된 주문 기준</p>
+      <div id="vendorBars"></div>
+    </section>
+  </div>
+
+  <section class="leaderboard">
+    <h2>TOP 5 판매 제품</h2>
+    <p class="sub">전체 마켓 합산 판매수량 기준</p>
+    <div id="top5"></div>
+  </section>
+</div>
+
+<script>
+  const data = __SUMMARY_JSON__;
+
+  function fmtDate(s) {
+    if (!s) return "";
+    const [y, m, d] = s.split("-");
+    return `${y}년 ${parseInt(m,10)}월 ${parseInt(d,10)}일 처리 결과`;
+  }
+  document.getElementById("runDate").textContent = fmtDate(data.run_date);
+
+  function el(tag, cls, html) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html !== undefined) e.innerHTML = html;
+    return e;
+  }
+
+  // --- 상단 통계 타일 ---
+  const tiles = document.getElementById("tiles");
+  const vendorCount = Object.keys(data.vendor_order_counts || {}).length;
+  const needsReview = (data.unclassified_count || 0) + (data.ambiguous_count || 0);
+
+  const tileDefs = [
+    ["전체 주문", data.total_order_count, false],
+    ["처리 라인 수", data.total_line_count, false],
+    ["분류된 협력사", vendorCount, false],
+    ["확인 필요", needsReview, true],
+  ];
+  tileDefs.forEach(([label, value, isWarn]) => {
+    const t = el("div", "tile" + (isWarn && value > 0 ? " chip-warn" : ""));
+    t.appendChild(el("div", "label", label));
+    t.appendChild(el("div", "value" + (isWarn && value > 0 ? " warn" : ""), String(value)));
+    tiles.appendChild(t);
+  });
+
+  // --- 바 차트 공통 렌더러 ---
+  function renderBars(containerId, counts) {
+    const container = document.getElementById(containerId);
+    const entries = Object.entries(counts || {}).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) {
+      container.appendChild(el("div", "empty-note", "데이터 없음"));
+      return;
+    }
+    const max = Math.max(...entries.map(([, v]) => v));
+    entries.forEach(([name, count]) => {
+      const row = el("div", "bar-row");
+      row.appendChild(el("div", "name", name));
+      const track = el("div", "bar-track");
+      const fill = el("div", "bar-fill");
+      fill.style.width = (max ? (count / max) * 100 : 0) + "%";
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el("div", "count", String(count)));
+      container.appendChild(row);
+    });
+  }
+  renderBars("marketBars", data.market_order_counts);
+  renderBars("vendorBars", data.vendor_order_counts);
+
+  // --- TOP5 리더보드 ---
+  const top5El = document.getElementById("top5");
+  const top5 = data.top5_products || [];
+  if (top5.length === 0) {
+    top5El.appendChild(el("div", "empty-note", "데이터 없음"));
+  } else {
+    const maxQty = Math.max(...top5.map(p => p.quantity));
+    top5.forEach((p, i) => {
+      const row = el("div", "lb-row");
+      row.appendChild(el("div", "lb-rank", String(i + 1)));
+      const main = el("div", "lb-main");
+      main.appendChild(el("div", "lb-name", p.product_name));
+      const track = el("div", "lb-track");
+      const fill = el("div", "lb-fill");
+      fill.style.width = (maxQty ? (p.quantity / maxQty) * 100 : 0) + "%";
+      track.appendChild(fill);
+      main.appendChild(track);
+      row.appendChild(main);
+      row.appendChild(el("div", "lb-qty", `${p.quantity}<span class="unit">개</span>`));
+      top5El.appendChild(row);
+    });
+  }
+</script>

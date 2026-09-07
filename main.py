@@ -6,12 +6,15 @@
     python3 main.py 주문서1.xlsx 주문서2.xlsx ... [--out output]
 """
 import argparse
+import json
 from datetime import date
 from pathlib import Path
 
 from src.normalize import read_market_file
 from src.classify import classify_vendor
 from src.writer import VENDORS, write_vendor_file, write_review_file
+from src.summary import compute_summary
+from src.dashboard import render_dashboard_html
 
 
 def run(input_paths, out_dir):
@@ -51,7 +54,17 @@ def run(input_paths, out_dir):
         write_review_file(unclassified, ambiguous, review_path)
         print(f"[확인 필요] 미분류 {len(unclassified)}건, 중복매칭 {len(ambiguous)}건 -> {review_path}")
 
-    return written, review_path
+    summary = compute_summary(all_rows, by_vendor, unclassified, ambiguous, run_date)
+    summary_path = out_dir / f"summary_{run_date}.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    print(f"[요약] 전체 주문 {summary['total_order_count']}건 -> {summary_path}")
+
+    dashboard_path = out_dir / f"dashboard_{run_date}.html"
+    dashboard_path.write_text(render_dashboard_html(summary), encoding="utf-8")
+    print(f"[대시보드] -> {dashboard_path}")
+
+    return written, review_path, summary_path, dashboard_path
 
 
 def main():
