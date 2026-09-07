@@ -23,6 +23,18 @@ python3 main.py 주문서1.xlsx 주문서2.xlsx ... --out output
 2. **`src/classify.py`** — 상품명/옵션에 협력사의 브랜드 키워드(`config/vendors.json`의 `brand_keywords`)가 포함되어 있으면 그 협력사로 분류한다.
 3. **`src/writer.py`** — `templates/{협력사}.xlsx` (실제 고객정보는 제거된 빈 양식)를 복사해 분류된 주문을 채워 넣는다. 헤더 텍스트를 표준 필드에 자동으로 매핑하므로, 새 협력사 양식을 추가할 때도 대부분 설정만으로 처리된다.
 4. **`src/summary.py`, `src/dashboard.py`** — 분류 결과에서 마켓별/협력사별 고유 주문 건수와 전체 TOP5 판매 제품(판매수량 기준)을 집계하고, 보고하기 좋은 대시보드 HTML로 렌더링한다.
+5. **`src/reconcile.py`** — 원본 대비 처리 건수가 일치하는지 확인하고, 배송메시지(특이사항)·정보 누락(수령인명/연락처/주소) 건을 모은다.
+
+## 대시보드 날짜별 기록 (Artifact db)
+
+대시보드는 [Artifact db capability](https://claude.ai/code/artifact/81d801cb-0c8f-4bce-ae90-ca9c97f268f3)를 이용해 매일의 `summary_{날짜}.json`을 누적 저장하고, "오늘/최근 7일/이번 달/이번 분기/특정 날짜"를 골라 볼 수 있다.
+
+**매일 실행 후 이 순서로 반영한다** (Claude가 수행):
+1. `python3 main.py ...` 실행 → `output/summary_{날짜}.json`, `output/dashboard_{날짜}.html` 생성
+2. Artifact `write_db` (db_op: set)로 그날 summary를 `daily_summaries/{날짜}` 문서에 저장 (`file_path`로 summary json 그대로 넘기면 됨)
+3. Artifact 퍼블리시로 `dashboard_{날짜}.html`을 같은 URL에 재배포 (db 접근이 없는 뷰어를 위한 폴백 겸, 최신 날짜의 기본 화면)
+
+대시보드 페이지 자체는 로드 시 `daily_summaries` 컬렉션 전체를 읽어 기간별로 합산하므로, 2번을 빼먹지 않는 한 별도 코드 수정 없이 계속 쌓인다.
 
 ## 협력사 현황 (7개)
 

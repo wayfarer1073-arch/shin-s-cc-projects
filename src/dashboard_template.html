@@ -91,7 +91,7 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 10px;
-    margin-bottom: 22px;
+    margin-bottom: 16px;
   }
   h1 {
     font-size: 22px;
@@ -104,6 +104,47 @@
     font-size: 13px;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* --- 기간 선택 --- */
+  .range-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .range-btn {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-2);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    cursor: pointer;
+  }
+  .range-btn:hover { background: var(--surface-2); }
+  .range-btn.active {
+    color: #ffffff;
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .range-select {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-2);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .range-note {
+    font-size: 12px;
+    color: var(--text-muted);
   }
 
   .hero-revenue {
@@ -129,7 +170,7 @@
     line-height: 1.1;
   }
   .hero-revenue .value .unit { font-size: 20px; font-weight: 600; margin-left: 4px; }
-  .hero-revenue .caveat {
+  .hero-revenue .caveat, .hero-revenue .avg {
     margin-top: 8px;
     font-size: 12px;
     opacity: 0.85;
@@ -167,6 +208,62 @@
     border-color: transparent;
   }
   .tile.chip-warn .label { color: var(--warn-text); opacity: 0.85; }
+
+  /* --- 추이 차트 --- */
+  .trend-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px 20px;
+    margin-bottom: 14px;
+  }
+  .trend-panel h2 { font-size: 14px; font-weight: 700; margin: 0 0 4px; }
+  .trend-panel .sub { font-size: 12px; color: var(--text-muted); margin: 0 0 16px; }
+  .trend-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 120px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .trend-bar-wrap {
+    flex: 1 0 6px;
+    min-width: 6px;
+    max-width: 28px;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    cursor: pointer;
+  }
+  .trend-bar {
+    width: 100%;
+    min-height: 2px;
+    border-radius: 3px 3px 0 0;
+    background: var(--accent);
+  }
+  .trend-bar-wrap:hover .trend-bar { background: var(--series-2); }
+  .trend-axis {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--text-1);
+    color: var(--page);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 5px 9px;
+    border-radius: 6px;
+    white-space: nowrap;
+    z-index: 10;
+    display: none;
+  }
 
   .panels {
     display: grid;
@@ -381,9 +478,25 @@
     </div>
   </header>
 
+  <div class="range-bar" id="rangeBar" hidden>
+    <button class="range-btn" data-range="today">오늘</button>
+    <button class="range-btn" data-range="week">최근 7일</button>
+    <button class="range-btn" data-range="month">이번 달</button>
+    <button class="range-btn" data-range="quarter">이번 분기</button>
+    <select class="range-select" id="dateSelect"></select>
+    <span class="range-note" id="rangeNote"></span>
+  </div>
+
   <div class="hero-revenue" id="heroRevenue"></div>
 
   <div class="tiles" id="tiles"></div>
+
+  <div class="trend-panel" id="trendPanel" hidden>
+    <h2>일별 매출 추이</h2>
+    <p class="sub" id="trendSub"></p>
+    <div class="trend-chart" id="trendChart"></div>
+    <div class="trend-axis" id="trendAxis"></div>
+  </div>
 
   <div class="panels">
     <section class="panel market">
@@ -400,7 +513,7 @@
 
   <section class="leaderboard">
     <h2>TOP 5 판매 제품</h2>
-    <p class="sub">전체 마켓 합산 판매수량 기준</p>
+    <p class="sub" id="top5Sub">전체 마켓 합산 판매수량 기준</p>
     <div id="top5"></div>
   </section>
 
@@ -425,15 +538,10 @@
   </section>
 </div>
 
-<script>
-  const data = __SUMMARY_JSON__;
+<div class="tooltip" id="tooltip"></div>
 
-  function fmtDate(s) {
-    if (!s) return "";
-    const [y, m, d] = s.split("-");
-    return `${y}년 ${parseInt(m,10)}월 ${parseInt(d,10)}일 처리 결과`;
-  }
-  document.getElementById("runDate").textContent = fmtDate(data.run_date);
+<script>
+  const embeddedSummary = __SUMMARY_JSON__;
 
   function el(tag, cls, html) {
     const e = document.createElement(tag);
@@ -441,136 +549,365 @@
     if (html !== undefined) e.innerHTML = html;
     return e;
   }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
-  // --- 총 매출액 ---
-  const hero = document.getElementById("heroRevenue");
-  const revenue = data.total_revenue || 0;
-  const revenueStr = revenue.toLocaleString("ko-KR");
-  hero.appendChild(el("div", "label", "총 매출액"));
-  hero.appendChild(el("div", "value", `${revenueStr}<span class="unit">원</span>`));
-  if (data.revenue_missing_count > 0) {
-    hero.appendChild(el(
-      "div", "caveat",
-      `※ 금액 정보가 없는 주문 ${data.revenue_missing_count}건은 제외된 금액입니다`
-    ));
+  function fmtDateLabel(s) {
+    if (!s) return "";
+    const [y, m, d] = s.split("-");
+    return `${y}년 ${parseInt(m,10)}월 ${parseInt(d,10)}일`;
+  }
+  function fmtShortDate(s) {
+    const [, m, d] = s.split("-");
+    return `${parseInt(m,10)}/${parseInt(d,10)}`;
   }
 
-  // --- 상단 통계 타일 ---
-  const tiles = document.getElementById("tiles");
-  const vendorCount = Object.keys(data.vendor_order_counts || {}).length;
-  const needsReview = (data.unclassified_count || 0) + (data.ambiguous_count || 0);
+  // ---------------------------------------------------------------------
+  // 여러 날짜의 summary 문서를 하나로 합산한다 (기간별 지표 계산용).
+  // ---------------------------------------------------------------------
+  function sumCounts(target, src) {
+    for (const [k, v] of Object.entries(src || {})) target[k] = (target[k] || 0) + v;
+  }
 
-  const tileDefs = [
-    ["전체 주문", data.total_order_count, false],
-    ["처리 라인 수", data.total_line_count, false],
-    ["분류된 협력사", vendorCount, false],
-    ["확인 필요", needsReview, true],
-  ];
-  tileDefs.forEach(([label, value, isWarn]) => {
-    const t = el("div", "tile" + (isWarn && value > 0 ? " chip-warn" : ""));
-    t.appendChild(el("div", "label", label));
-    t.appendChild(el("div", "value" + (isWarn && value > 0 ? " warn" : ""), String(value)));
-    tiles.appendChild(t);
-  });
-
-  // --- 바 차트 공통 렌더러 ---
-  function renderBars(containerId, counts) {
-    const container = document.getElementById(containerId);
-    const entries = Object.entries(counts || {}).sort((a, b) => b[1] - a[1]);
-    if (entries.length === 0) {
-      container.appendChild(el("div", "empty-note", "데이터 없음"));
-      return;
+  function aggregate(docs) {
+    docs = docs.slice().sort((a, b) => a.run_date < b.run_date ? -1 : 1);
+    const agg = {
+      dates: docs.map(d => d.run_date),
+      total_order_count: 0,
+      total_line_count: 0,
+      market_order_counts: {},
+      vendor_order_counts: {},
+      unclassified_count: 0,
+      ambiguous_count: 0,
+      total_revenue: 0,
+      revenue_missing_count: 0,
+      highlight_totals: { quantity: 0, duplicate_address: 0, both: 0 },
+      special_notes: [],
+      missing_info: [],
+      reconciliation_all_match: true,
+      mismatched_dates: [],
+      product_breakdown: {},
+      daily_revenue: [],
+    };
+    for (const d of docs) {
+      agg.total_order_count += d.total_order_count || 0;
+      agg.total_line_count += d.total_line_count || 0;
+      agg.unclassified_count += d.unclassified_count || 0;
+      agg.ambiguous_count += d.ambiguous_count || 0;
+      agg.total_revenue += d.total_revenue || 0;
+      agg.revenue_missing_count += d.revenue_missing_count || 0;
+      sumCounts(agg.market_order_counts, d.market_order_counts);
+      sumCounts(agg.vendor_order_counts, d.vendor_order_counts);
+      sumCounts(agg.highlight_totals, d.highlight_totals);
+      (d.special_notes || []).forEach(n => agg.special_notes.push({ ...n, run_date: d.run_date }));
+      (d.missing_info || []).forEach(n => agg.missing_info.push({ ...n, run_date: d.run_date }));
+      if (d.reconciliation && d.reconciliation.match === false) {
+        agg.reconciliation_all_match = false;
+        agg.mismatched_dates.push(d.run_date);
+      }
+      for (const [name, v] of Object.entries(d.product_breakdown || {})) {
+        if (!agg.product_breakdown[name]) agg.product_breakdown[name] = { quantity: 0, revenue: 0 };
+        agg.product_breakdown[name].quantity += v.quantity || 0;
+        agg.product_breakdown[name].revenue += v.revenue || 0;
+      }
+      agg.daily_revenue.push({ run_date: d.run_date, revenue: d.total_revenue || 0 });
     }
-    const max = Math.max(...entries.map(([, v]) => v));
-    entries.forEach(([name, count]) => {
-      const row = el("div", "bar-row");
-      row.appendChild(el("div", "name", name));
-      const track = el("div", "bar-track");
-      const fill = el("div", "bar-fill");
-      fill.style.width = (max ? (count / max) * 100 : 0) + "%";
-      track.appendChild(fill);
-      row.appendChild(track);
-      row.appendChild(el("div", "count", String(count)));
-      container.appendChild(row);
+    agg.top5_products = Object.entries(agg.product_breakdown)
+      .map(([name, v]) => ({
+        product_name: name,
+        quantity: v.quantity,
+        revenue: v.revenue,
+        revenue_share_pct: agg.total_revenue ? Math.round(v.revenue / agg.total_revenue * 1000) / 10 : null,
+      }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 5);
+    return agg;
+  }
+
+  // ---------------------------------------------------------------------
+  // 렌더링 (기간 선택에 따라 반복 호출됨)
+  // ---------------------------------------------------------------------
+  function renderView(agg, opts) {
+    const isMulti = opts.isMulti;
+    const dayCount = agg.dates.length;
+
+    document.getElementById("runDate").textContent = opts.label;
+
+    // 총 매출액
+    const hero = document.getElementById("heroRevenue");
+    clear(hero);
+    const revenueStr = (agg.total_revenue || 0).toLocaleString("ko-KR");
+    hero.appendChild(el("div", "label", isMulti ? "총 매출액 (기간 합산)" : "총 매출액"));
+    hero.appendChild(el("div", "value", `${revenueStr}<span class="unit">원</span>`));
+    if (isMulti && dayCount > 0) {
+      const avg = Math.round((agg.total_revenue || 0) / dayCount).toLocaleString("ko-KR");
+      hero.appendChild(el("div", "avg", `일평균 ${avg}원 (${dayCount}일 기준)`));
+    }
+    if (agg.revenue_missing_count > 0) {
+      hero.appendChild(el(
+        "div", "caveat",
+        `※ 금액 정보가 없는 주문 ${agg.revenue_missing_count}건은 제외된 금액입니다`
+      ));
+    }
+
+    // 상단 통계 타일
+    const tiles = document.getElementById("tiles");
+    clear(tiles);
+    const vendorCount = Object.keys(agg.vendor_order_counts || {}).length;
+    const needsReview = (agg.unclassified_count || 0) + (agg.ambiguous_count || 0);
+    const tileDefs = [
+      ["전체 주문", agg.total_order_count, false],
+      ["처리 라인 수", agg.total_line_count, false],
+      ["분류된 협력사", vendorCount, false],
+      ["확인 필요", needsReview, true],
+    ];
+    tileDefs.forEach(([label, value, isWarn]) => {
+      const t = el("div", "tile" + (isWarn && value > 0 ? " chip-warn" : ""));
+      t.appendChild(el("div", "label", label));
+      t.appendChild(el("div", "value" + (isWarn && value > 0 ? " warn" : ""), String(value)));
+      tiles.appendChild(t);
+    });
+
+    // 추이 차트 (기간이 2일 이상일 때만)
+    const trendPanel = document.getElementById("trendPanel");
+    if (isMulti && agg.daily_revenue.length > 1) {
+      trendPanel.hidden = false;
+      document.getElementById("trendSub").textContent = `${opts.label} · ${dayCount}일`;
+      const chart = document.getElementById("trendChart");
+      const axis = document.getElementById("trendAxis");
+      clear(chart); clear(axis);
+      const maxRev = Math.max(...agg.daily_revenue.map(d => d.revenue), 1);
+      const tooltip = document.getElementById("tooltip");
+      agg.daily_revenue.forEach(d => {
+        const wrap = el("div", "trend-bar-wrap");
+        const bar = el("div", "trend-bar");
+        bar.style.height = Math.max((d.revenue / maxRev) * 100, 2) + "%";
+        wrap.appendChild(bar);
+        wrap.addEventListener("mousemove", (e) => {
+          tooltip.style.display = "block";
+          tooltip.style.left = (e.clientX + 12) + "px";
+          tooltip.style.top = (e.clientY + 12) + "px";
+          tooltip.textContent = `${fmtDateLabel(d.run_date)} · ${d.revenue.toLocaleString("ko-KR")}원`;
+        });
+        wrap.addEventListener("mouseleave", () => { tooltip.style.display = "none"; });
+        chart.appendChild(wrap);
+      });
+      const first = agg.daily_revenue[0].run_date;
+      const last = agg.daily_revenue[agg.daily_revenue.length - 1].run_date;
+      axis.appendChild(el("span", null, fmtShortDate(first)));
+      if (agg.daily_revenue.length > 2) axis.appendChild(el("span", null, fmtShortDate(last)));
+    } else {
+      trendPanel.hidden = true;
+    }
+
+    // 바 차트
+    function renderBars(containerId, counts) {
+      const container = document.getElementById(containerId);
+      clear(container);
+      const entries = Object.entries(counts || {}).sort((a, b) => b[1] - a[1]);
+      if (entries.length === 0) {
+        container.appendChild(el("div", "empty-note", "데이터 없음"));
+        return;
+      }
+      const max = Math.max(...entries.map(([, v]) => v));
+      entries.forEach(([name, count]) => {
+        const row = el("div", "bar-row");
+        row.appendChild(el("div", "name", name));
+        const track = el("div", "bar-track");
+        const fill = el("div", "bar-fill");
+        fill.style.width = (max ? (count / max) * 100 : 0) + "%";
+        track.appendChild(fill);
+        row.appendChild(track);
+        row.appendChild(el("div", "count", String(count)));
+        container.appendChild(row);
+      });
+    }
+    renderBars("marketBars", agg.market_order_counts);
+    renderBars("vendorBars", agg.vendor_order_counts);
+
+    // TOP5
+    document.getElementById("top5Sub").textContent =
+      (isMulti ? `${opts.label} 합산 · ` : "") + "전체 마켓 합산 판매수량 기준";
+    const top5El = document.getElementById("top5");
+    clear(top5El);
+    const top5 = agg.top5_products || [];
+    if (top5.length === 0) {
+      top5El.appendChild(el("div", "empty-note", "데이터 없음"));
+    } else {
+      const maxQty = Math.max(...top5.map(p => p.quantity));
+      top5.forEach((p, i) => {
+        const row = el("div", "lb-row");
+        row.appendChild(el("div", "lb-rank", String(i + 1)));
+        const main = el("div", "lb-main");
+        main.appendChild(el("div", "lb-name", p.product_name));
+        const track = el("div", "lb-track");
+        const fill = el("div", "lb-fill");
+        fill.style.width = (maxQty ? (p.quantity / maxQty) * 100 : 0) + "%";
+        track.appendChild(fill);
+        main.appendChild(track);
+        row.appendChild(main);
+
+        const qtyWrap = el("div", "lb-qty-wrap");
+        qtyWrap.appendChild(el("div", "lb-qty", `${p.quantity}<span class="unit">개</span>`));
+        const shareText = p.revenue_share_pct != null ? `매출 ${p.revenue_share_pct}%` : "매출 정보 없음";
+        qtyWrap.appendChild(el("div", "lb-share" + (p.revenue_share_pct == null ? " muted" : ""), shareText));
+        row.appendChild(qtyWrap);
+
+        top5El.appendChild(row);
+      });
+    }
+
+    // 대조 결과 칩
+    const reconChip = document.getElementById("reconChip");
+    clear(reconChip);
+    if (agg.reconciliation_all_match) {
+      reconChip.appendChild(el(
+        "span", "status-chip good",
+        `<span class="dot"></span>원본 대조 완료 · 누락 없음`
+      ));
+    } else {
+      reconChip.appendChild(el(
+        "span", "status-chip critical",
+        `<span class="dot"></span>대조 불일치 (${agg.mismatched_dates.join(", ")})`
+      ));
+    }
+
+    // 강조 표시 범례
+    const ht = agg.highlight_totals || {};
+    document.getElementById("legendQty").textContent = `수량 2개 이상: ${ht.quantity || 0}건`;
+    document.getElementById("legendDup").textContent = `동일 수령인·주소 중복: ${ht.duplicate_address || 0}건`;
+    document.getElementById("legendBoth").textContent = `둘 다 해당: ${ht.both || 0}건`;
+
+    // 특이사항 / 정보 누락 리스트
+    function renderNoteList(containerId, titleId, titleLabel, items, rowRenderer) {
+      const container = document.getElementById(containerId);
+      clear(container);
+      document.getElementById(titleId).textContent = `${titleLabel} (${items.length}건)`;
+      if (items.length === 0) {
+        container.appendChild(el("div", "empty-note", "해당 없음"));
+        return;
+      }
+      items.forEach(item => container.appendChild(rowRenderer(item)));
+    }
+
+    renderNoteList("notesList", "notesTitle", "특이사항 (배송메시지)", agg.special_notes || [], (n) => {
+      const row = el("div", "note-item");
+      row.appendChild(el("div", "n-who", n.receiver_name || "-"));
+      row.appendChild(el("div", "n-what", `${n.product_name || ""} · ${n.message}`));
+      row.appendChild(el("div", "n-flag", isMulti ? fmtShortDate(n.run_date) : (n.order_id || "")));
+      return row;
+    });
+
+    renderNoteList("missingList", "missingTitle", "정보 누락 확인 필요", agg.missing_info || [], (n) => {
+      const row = el("div", "note-item");
+      row.appendChild(el("div", "n-who", n.receiver_name || "(수령인명 없음)"));
+      row.appendChild(el("div", "n-what", n.product_name || ""));
+      row.appendChild(el("div", "n-flag", (n.missing_fields || []).join(", ") + " 없음"));
+      return row;
     });
   }
-  renderBars("marketBars", data.market_order_counts);
-  renderBars("vendorBars", data.vendor_order_counts);
 
-  // --- TOP5 리더보드 ---
-  const top5El = document.getElementById("top5");
-  const top5 = data.top5_products || [];
-  if (top5.length === 0) {
-    top5El.appendChild(el("div", "empty-note", "데이터 없음"));
-  } else {
-    const maxQty = Math.max(...top5.map(p => p.quantity));
-    top5.forEach((p, i) => {
-      const row = el("div", "lb-row");
-      row.appendChild(el("div", "lb-rank", String(i + 1)));
-      const main = el("div", "lb-main");
-      main.appendChild(el("div", "lb-name", p.product_name));
-      const track = el("div", "lb-track");
-      const fill = el("div", "lb-fill");
-      fill.style.width = (maxQty ? (p.quantity / maxQty) * 100 : 0) + "%";
-      track.appendChild(fill);
-      main.appendChild(track);
-      row.appendChild(main);
-
-      const qtyWrap = el("div", "lb-qty-wrap");
-      qtyWrap.appendChild(el("div", "lb-qty", `${p.quantity}<span class="unit">개</span>`));
-      const shareText = p.revenue_share_pct != null ? `매출 ${p.revenue_share_pct}%` : "매출 정보 없음";
-      qtyWrap.appendChild(el("div", "lb-share" + (p.revenue_share_pct == null ? " muted" : ""), shareText));
-      row.appendChild(qtyWrap);
-
-      top5El.appendChild(row);
-    });
+  // ---------------------------------------------------------------------
+  // 기간 계산
+  // ---------------------------------------------------------------------
+  function parseDate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+  function addDays(date, n) { const d = new Date(date); d.setDate(d.getDate() + n); return d; }
+  function toKey(date) {
+    const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, "0"), d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
 
-  // --- 대조 결과 칩 ---
-  const recon = data.reconciliation || {};
-  const reconChip = document.getElementById("reconChip");
-  if (recon.match) {
-    reconChip.appendChild(el(
-      "span", "status-chip good",
-      `<span class="dot"></span>원본 ${recon.raw_count}건 대조 완료 · 누락 없음`
-    ));
-  } else if (recon.raw_count != null) {
-    reconChip.appendChild(el(
-      "span", "status-chip critical",
-      `<span class="dot"></span>원본 ${recon.raw_count}건 vs 처리 ${recon.processed_count}건 불일치`
-    ));
-  }
-
-  // --- 강조 표시 범례 ---
-  const ht = data.highlight_totals || {};
-  document.getElementById("legendQty").textContent = `수량 2개 이상: ${ht.quantity || 0}건`;
-  document.getElementById("legendDup").textContent = `동일 수령인·주소 중복: ${ht.duplicate_address || 0}건`;
-  document.getElementById("legendBoth").textContent = `둘 다 해당: ${ht.both || 0}건`;
-
-  // --- 특이사항 / 정보 누락 리스트 ---
-  function renderNoteList(containerId, titleId, titleLabel, items, rowRenderer) {
-    const container = document.getElementById(containerId);
-    document.getElementById(titleId).textContent = `${titleLabel} (${items.length}건)`;
-    if (items.length === 0) {
-      container.appendChild(el("div", "empty-note", "해당 없음"));
-      return;
+  function selectRange(allDocs, rangeKey, latestDate) {
+    if (rangeKey === "today") {
+      return allDocs.filter(d => d.run_date === toKey(latestDate));
     }
-    items.forEach(item => container.appendChild(rowRenderer(item)));
+    if (rangeKey === "week") {
+      const start = toKey(addDays(latestDate, -6));
+      return allDocs.filter(d => d.run_date >= start && d.run_date <= toKey(latestDate));
+    }
+    if (rangeKey === "month") {
+      const y = latestDate.getFullYear(), m = latestDate.getMonth();
+      return allDocs.filter(d => { const dd = parseDate(d.run_date); return dd.getFullYear() === y && dd.getMonth() === m; });
+    }
+    if (rangeKey === "quarter") {
+      const y = latestDate.getFullYear(), q = Math.floor(latestDate.getMonth() / 3);
+      return allDocs.filter(d => { const dd = parseDate(d.run_date); return dd.getFullYear() === y && Math.floor(dd.getMonth() / 3) === q; });
+    }
+    // 특정 날짜 선택
+    return allDocs.filter(d => d.run_date === rangeKey);
   }
 
-  renderNoteList("notesList", "notesTitle", "특이사항 (배송메시지)", data.special_notes || [], (n) => {
-    const row = el("div", "note-item");
-    row.appendChild(el("div", "n-who", n.receiver_name || "-"));
-    row.appendChild(el("div", "n-what", `${n.product_name || ""} · ${n.message}`));
-    row.appendChild(el("div", "n-flag", n.order_id || ""));
-    return row;
-  });
+  // ---------------------------------------------------------------------
+  // 초기화: db capability로 과거 기록을 불러오고, 없으면 오늘 데이터만 사용
+  // ---------------------------------------------------------------------
+  async function init() {
+    let allDocs = [embeddedSummary];
+    let dbAvailable = false;
+    try {
+      const db = await claude.use("db");
+      if (db) {
+        const snap = await db.collection("daily_summaries").orderBy("run_date", "asc").limit(400).get();
+        const docs = snap.docs.map(d => d.data()).filter(Boolean);
+        if (docs.length > 0) {
+          allDocs = docs;
+          dbAvailable = true;
+        }
+      }
+    } catch (e) {
+      // db 사용 불가 -> 오늘 데이터만으로 렌더링
+    }
 
-  renderNoteList("missingList", "missingTitle", "정보 누락 확인 필요", data.missing_info || [], (n) => {
-    const row = el("div", "note-item");
-    row.appendChild(el("div", "n-who", n.receiver_name || "(수령인명 없음)"));
-    row.appendChild(el("div", "n-what", n.product_name || ""));
-    row.appendChild(el("div", "n-flag", (n.missing_fields || []).join(", ") + " 없음"));
-    return row;
-  });
+    const dates = [...new Set(allDocs.map(d => d.run_date))].sort();
+    const latestDate = parseDate(dates[dates.length - 1]);
+
+    const rangeBar = document.getElementById("rangeBar");
+    const dateSelect = document.getElementById("dateSelect");
+    const rangeNote = document.getElementById("rangeNote");
+
+    if (dbAvailable && dates.length > 1) {
+      rangeBar.hidden = false;
+      const opt0 = el("option", null, "날짜 선택");
+      opt0.value = "";
+      dateSelect.appendChild(opt0);
+      dates.slice().reverse().forEach(dstr => {
+        const opt = el("option", null, fmtDateLabel(dstr));
+        opt.value = dstr;
+        dateSelect.appendChild(opt);
+      });
+      rangeNote.textContent = `${dates.length}일치 기록 보유 (${fmtShortDate(dates[0])} ~ ${fmtShortDate(dates[dates.length - 1])})`;
+    } else if (!dbAvailable) {
+      rangeNote.textContent = "";
+    }
+
+    function apply(rangeKey) {
+      document.querySelectorAll(".range-btn").forEach(b => b.classList.toggle("active", b.dataset.range === rangeKey));
+      dateSelect.value = "";
+      const docs = selectRange(allDocs, rangeKey, latestDate);
+      const agg = aggregate(docs);
+      const labels = { today: "오늘", week: "최근 7일", month: "이번 달", quarter: "이번 분기" };
+      let label;
+      if (docs.length === 0) {
+        label = "데이터 없음";
+      } else if (docs.length === 1) {
+        label = `${fmtDateLabel(docs[0].run_date)} 처리 결과`;
+      } else {
+        label = `${labels[rangeKey] || rangeKey} (${fmtShortDate(docs[0].run_date)} ~ ${fmtShortDate(docs[docs.length - 1].run_date)}) 처리 결과`;
+      }
+      renderView(agg, { isMulti: docs.length > 1, label });
+    }
+
+    document.querySelectorAll(".range-btn").forEach(btn => {
+      btn.addEventListener("click", () => apply(btn.dataset.range));
+    });
+    dateSelect.addEventListener("change", () => {
+      if (!dateSelect.value) return;
+      document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
+      const docs = selectRange(allDocs, dateSelect.value, latestDate);
+      const agg = aggregate(docs);
+      renderView(agg, { isMulti: false, label: `${fmtDateLabel(dateSelect.value)} 처리 결과` });
+    });
+
+    apply("today");
+  }
+
+  init();
 </script>

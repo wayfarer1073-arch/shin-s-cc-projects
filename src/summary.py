@@ -57,6 +57,13 @@ def compute_summary(
             "revenue_share_pct": share,
         })
 
+    # 전체 상품별 수량/매출 (top5 넘어서도 보관 -> 여러 날짜를 합쳐서 다시
+    # 랭킹을 매길 때 정확한 결과가 나오도록. 일별 대시보드 DB 문서에 저장됨.
+    product_breakdown = {
+        name: {"quantity": qty, "revenue": product_revenue.get(name, 0)}
+        for name, qty in product_qty.items()
+    }
+
     return {
         "run_date": run_date,
         "total_order_count": len(all_order_ids) + no_id_rows,
@@ -66,6 +73,7 @@ def compute_summary(
         "unclassified_count": len(unclassified),
         "ambiguous_count": len(ambiguous),
         "top5_products": top5_products,
+        "product_breakdown": product_breakdown,
         "total_revenue": total_revenue,
         "revenue_missing_count": revenue_missing_count,
         "reconciliation": reconciliation or {},
