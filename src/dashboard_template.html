@@ -94,6 +94,35 @@
     font-variant-numeric: tabular-nums;
   }
 
+  .hero-revenue {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--series-3) 130%);
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 12px;
+    color: #ffffff;
+  }
+  .hero-revenue .label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.88;
+    margin-bottom: 8px;
+  }
+  .hero-revenue .value {
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .hero-revenue .value .unit { font-size: 20px; font-weight: 600; margin-left: 4px; }
+  .hero-revenue .caveat {
+    margin-top: 8px;
+    font-size: 12px;
+    opacity: 0.85;
+  }
+
   .tiles {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -252,6 +281,8 @@
     <div class="run-date" id="runDate"></div>
   </header>
 
+  <div class="hero-revenue" id="heroRevenue"></div>
+
   <div class="tiles" id="tiles"></div>
 
   <div class="panels">
@@ -289,6 +320,19 @@
     if (cls) e.className = cls;
     if (html !== undefined) e.innerHTML = html;
     return e;
+  }
+
+  // --- 총 매출액 ---
+  const hero = document.getElementById("heroRevenue");
+  const revenue = data.total_revenue || 0;
+  const revenueStr = revenue.toLocaleString("ko-KR");
+  hero.appendChild(el("div", "label", "총 매출액"));
+  hero.appendChild(el("div", "value", `${revenueStr}<span class="unit">원</span>`));
+  if (data.revenue_missing_count > 0) {
+    hero.appendChild(el(
+      "div", "caveat",
+      `※ 금액 정보가 없는 주문 ${data.revenue_missing_count}건은 제외된 금액입니다`
+    ));
   }
 
   // --- 상단 통계 타일 ---

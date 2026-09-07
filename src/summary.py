@@ -37,6 +37,10 @@ def compute_summary(all_rows, by_vendor, unclassified, ambiguous, run_date):
     all_order_ids = {r.get("order_id") for r in all_rows if r.get("order_id")}
     no_id_rows = sum(1 for r in all_rows if not r.get("order_id"))
 
+    amounts = [r.get("payment_amount") for r in all_rows if r.get("payment_amount") is not None]
+    total_revenue = sum(amounts)
+    revenue_missing_count = len(all_rows) - len(amounts)
+
     return {
         "run_date": run_date,
         "total_order_count": len(all_order_ids) + no_id_rows,
@@ -46,4 +50,6 @@ def compute_summary(all_rows, by_vendor, unclassified, ambiguous, run_date):
         "unclassified_count": len(unclassified),
         "ambiguous_count": len(ambiguous),
         "top5_products": top5_products,
+        "total_revenue": total_revenue,
+        "revenue_missing_count": revenue_missing_count,
     }

@@ -55,6 +55,18 @@ def _normalize_phone(v):
     return s
 
 
+def _normalize_amount(v):
+    if v in (None, ""):
+        return None
+    if isinstance(v, (int, float)):
+        return v
+    s = str(v).strip().replace(",", "").replace("원", "")
+    try:
+        return float(s) if "." in s else int(s)
+    except ValueError:
+        return None
+
+
 def _normalize_date(v):
     if v in (None, ""):
         return None
@@ -100,6 +112,7 @@ def read_market_file(path):
         rec["order_date"] = _normalize_date(rec.get("order_date"))
         rec["product_name"] = (rec.get("product_name") or "").strip()
         rec["option"] = (rec.get("option") or "").strip()
+        rec["payment_amount"] = _normalize_amount(rec.get("payment_amount"))
         try:
             rec["quantity"] = int(rec["quantity"]) if rec.get("quantity") not in (None, "") else 1
         except (TypeError, ValueError):
