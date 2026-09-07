@@ -517,7 +517,7 @@
     <div id="top5"></div>
   </section>
 
-  <section class="report">
+  <section class="report" id="reportSection">
     <h2>작업 완료 리포트</h2>
     <p class="sub">원본 대조 결과 및 협력사 엑셀 강조 표시 안내</p>
 
@@ -771,13 +771,16 @@
       ));
     }
 
-    // 강조 표시 범례
+    // 작업 완료 리포트 (강조 표시 범례 + 특이사항/정보 누락) — 당일 조회일 때만 노출
+    const reportSection = document.getElementById("reportSection");
+    reportSection.hidden = isMulti;
+    if (isMulti) return;
+
     const ht = agg.highlight_totals || {};
     document.getElementById("legendQty").textContent = `수량 2개 이상: ${ht.quantity || 0}건`;
     document.getElementById("legendDup").textContent = `동일 수령인·주소 중복: ${ht.duplicate_address || 0}건`;
     document.getElementById("legendBoth").textContent = `둘 다 해당: ${ht.both || 0}건`;
 
-    // 특이사항 / 정보 누락 리스트
     function renderNoteList(containerId, titleId, titleLabel, items, rowRenderer) {
       const container = document.getElementById(containerId);
       clear(container);
@@ -793,7 +796,7 @@
       const row = el("div", "note-item");
       row.appendChild(el("div", "n-who", n.receiver_name || "-"));
       row.appendChild(el("div", "n-what", `${n.product_name || ""} · ${n.message}`));
-      row.appendChild(el("div", "n-flag", isMulti ? fmtShortDate(n.run_date) : (n.order_id || "")));
+      row.appendChild(el("div", "n-flag", n.order_id || ""));
       return row;
     });
 
