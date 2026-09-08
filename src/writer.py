@@ -1,5 +1,6 @@
 """정규화된 주문 라인을 협력사별 엑셀 양식(templates/*.xlsx)에 채워 넣는다."""
 import json
+import re
 from collections import Counter
 from copy import copy
 from pathlib import Path
@@ -32,12 +33,13 @@ _NO_HEADERS = {"NO", "No.", "No", "no", "번호", "순번"}
 
 def _build_col_map(ws, cfg):
     """열 번호 -> ("static", 값) | ("combine",) | ("seq",) | ("year"/"month"/"day",)
-    | ("shipment_flag",) | ("field", 표준필드명) 로 매핑한다. 매핑되지 않은 열은
-    자동으로 채우지 않고 비워둔다(택배사/송장번호 등 나중에 수기로 채우는 열)."""
+    | ("shipment_flag",) | ("field", 표준필드명) | ("code",) 로 매핑한다. 매핑되지
+    않은 열은 자동으로 채우지 않고 비워둔다(택배사/송장번호 등 나중에 수기로 채우는 열)."""
     header_row = cfg["header_row"]
     field_overrides = cfg.get("field_overrides", {})
     static_fields = cfg.get("static_fields", {})
     combine_field = cfg.get("combine_product_option_field")
+    code_column = cfg.get("code_column")
 
     col_map = {}
     for c in range(1, ws.max_column + 1):
@@ -52,6 +54,8 @@ def _build_col_map(ws, cfg):
             col_map[c] = ("static", static_fields[header])
         elif combine_field and header == combine_field:
             col_map[c] = ("combine",)
+        elif code_column and header == code_column:
+            col_map[c] = ("code",)
         elif header in field_overrides:
             col_map[c] = ("field", field_overrides[header])
         elif header in _NO_HEADERS:
@@ -69,6 +73,51 @@ def _build_col_map(ws, cfg):
     return col_map
 
 
+# ---------------------------------------------------------------------------
+# 상품코드 조회: 협력사가 준 상품명/옵션명 <-> 자체 코드 매핑표(data/reference/
+# codes_{협력사}.json)에서, 정규화한 이름이 주문 상품명+옵션 텍스트에 부분
+# 일치하면 그 코드를 채운다. 매핑표 자체가 다른 상품군을 담고 있거나 커버리지가
+# 낮을 수 있어 매치가 없으면 그냥 비워둔다(수기로 채우게).
+# ---------------------------------------------------------------------------
+_CODE_MATCH_MIN_LEN = 4
+_code_tables = {}
+
+
+def _normalize_for_code(s):
+    s = str(s or "")
+    s = re.sub(r'^[\(\[].*?[\)\]]', '', s)
+    s = re.sub(r'[\s"\'/,.\-_★\[\]]+', '', s)
+    return s.strip()
+
+
+def _load_code_table(vendor_name, cfg):
+    if vendor_name not in _code_tables:
+        code_file = cfg.get("code_lookup_file")
+        if not code_file:
+            _code_tables[vendor_name] = None
+        else:
+            with open(BASE_DIR / code_file, encoding="utf-8") as f:
+                entries = json.load(f)
+            items = [(_normalize_for_code(e["name"]), e["code"]) for e in entries]
+            items = [(n, c) for n, c in items if len(n) >= _CODE_MATCH_MIN_LEN]
+            items.sort(key=lambda x: len(x[0]), reverse=True)
+            _code_tables[vendor_name] = items
+    return _code_tables[vendor_name]
+
+
+def _code_for(vendor_name, cfg, rec):
+    table = _load_code_table(vendor_name, cfg)
+    if not table:
+        return None
+    text = _normalize_for_code(f"{rec.get('product_name') or ''} {rec.get('option') or ''}")
+    if not text:
+        return None
+    for name, code in table:
+        if name in text:
+            return code
+    return None
+
+
 def _capture_row_style(ws, row_idx, max_col):
     styles = {}
     for c in range(1, max_col + 1):
@@ -83,7 +132,7 @@ def _capture_row_style(ws, row_idx, max_col):
     return styles
 
 
-def _cell_value_for(kind_spec, rec, seq, is_first_of_order):
+def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cfg=None):
     kind = kind_spec[0]
     if kind == "seq":
         return seq
@@ -102,6 +151,8 @@ def _cell_value_for(kind_spec, rec, seq, is_first_of_order):
         return 1 if is_first_of_order else None
     if kind == "field":
         return rec.get(kind_spec[1]) or None
+    if kind == "code":
+        return _code_for(vendor_name, cfg, rec)
     return None
 
 
@@ -156,7 +207,7 @@ def write_vendor_file(vendor_name, rows, out_path):
             seen_orders.add(order_id)
 
         for c, spec in col_map.items():
-            value = _cell_value_for(spec, rec, i + 1, is_first)
+            value = _cell_value_for(spec, rec, i + 1, is_first, vendor_name, cfg)
             cell = ws.cell(row=r, column=c)
 
             if spec[0] == "field" and spec[1] == "order_date" and value is not None:
