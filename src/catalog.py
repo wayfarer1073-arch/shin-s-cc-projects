@@ -5,8 +5,13 @@
   classify.py는 기존 브랜드 키워드 매칭으로 넘어간다.
 - MSNA: 하위 브랜드명이 상품명에 포함되는지로 찾는다 (하위 브랜드 -> 배송처 매핑은
   '브랜드별 배송비 정책' 시트 기준이라 일부 하위 브랜드는 배송처가 아직 없음).
+- 재고 기반 우선 배정(stock_override): 브랜드에 stock_override_file이 설정되어 있으면,
+  카탈로그 조회보다 먼저 확인한다. 3PL 업체가 실제 보관 중인 재고 목록에 해당 상품이
+  있으면 카탈로그의 과거 배송처 값과 무관하게 그 3PL 업체로 무조건 분류한다
+  (사용자가 명시적으로 지정한 우선순위 규칙).
 """
 import json
+import re
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -15,6 +20,42 @@ with open(BASE_DIR / "config" / "brands.json", encoding="utf-8") as f:
     _BRANDS_CFG = json.load(f)["brands"]
 
 _loaded = {}
+_stock_loaded = {}
+
+_STOCK_MATCH_MIN_LEN = 8  # 정규화한 이름이 이보다 짧으면 오탐 위험이 커서 매칭에서 제외
+
+
+def _normalize_name(s):
+    s = str(s or "")
+    s = re.sub(r'^\(.*?\)', '', s)
+    s = re.sub(r'^(New|NEW|1\+1|"1\+1"|"4개 구성")\s*', '', s)
+    s = re.sub(r'[\s"\'/,.\-_★]+', '', s)
+    return s.strip()
+
+
+def _load_stock_override(brand):
+    cfg = _BRANDS_CFG.get(brand, {})
+    stock_file = cfg.get("stock_override_file")
+    if not stock_file:
+        return None
+    if brand not in _stock_loaded:
+        with open(BASE_DIR / stock_file, encoding="utf-8") as f:
+            items = json.load(f)
+        names = [_normalize_name(it["product_name"]) for it in items]
+        names = [n for n in names if len(n) >= _STOCK_MATCH_MIN_LEN]
+        _stock_loaded[brand] = {"names": names, "vendor": cfg["stock_override_vendor"]}
+    return _stock_loaded[brand]
+
+
+def _stock_override_vendor(brand, product_name):
+    stock = _load_stock_override(brand)
+    if not stock or not product_name:
+        return None
+    norm_product = _normalize_name(product_name)
+    for stock_name in stock["names"]:
+        if stock_name in norm_product:
+            return stock["vendor"]
+    return None
 
 
 def _load_jm(cfg):
@@ -56,18 +97,40 @@ def _get_catalog(brand):
 
 
 def lookup_vendor(brand, product_name, option):
-    """반환: {"vendor":..., "managed_name":..., "unit_cost":...} 또는 매치 없으면 None."""
+    """반환: {"vendor":..., "managed_name":..., "unit_cost":...} 또는 매치 없으면 None.
+
+    재고 우선 배정은 원본 주문 상품명(마켓 리스팅 제목이라 수식어가 많이 붙음)뿐
+    아니라, 카탈로그 매칭에 성공했을 때의 관리상품명(더 깔끔한 이름이라 매칭이
+    잘 됨)에 대해서도 확인한다 — 둘 중 하나라도 재고 목록과 매칭되면 그 3PL로
+    무조건 배정한다.
+    """
     if not brand or not product_name:
         return None
+
     kind, catalog = _get_catalog(brand) or (None, None)
+
+    entry = None
     if kind == "jm_exact":
         entry = catalog["by_name_option"].get((product_name, option or ""))
-        if entry:
-            return {"vendor": entry["vendor"], "managed_name": entry["managed_name"], "unit_cost": entry["unit_cost"]}
-        vendors = catalog["by_name_vendors"].get(product_name)
-        if vendors and len(vendors) == 1:
-            return {"vendor": next(iter(vendors)), "managed_name": None, "unit_cost": None}
-        return None
+        if not entry:
+            vendors = catalog["by_name_vendors"].get(product_name)
+            if vendors and len(vendors) == 1:
+                entry = {"vendor": next(iter(vendors)), "managed_name": None, "unit_cost": None}
+
+    stock_vendor = _stock_override_vendor(brand, product_name)
+    if not stock_vendor and entry and entry.get("managed_name"):
+        stock_vendor = _stock_override_vendor(brand, entry["managed_name"])
+    if stock_vendor:
+        return {
+            "vendor": stock_vendor,
+            "managed_name": entry["managed_name"] if entry else None,
+            "unit_cost": entry["unit_cost"] if entry else None,
+        }
+
+    if kind == "jm_exact":
+        if not entry:
+            return None
+        return {"vendor": entry["vendor"], "managed_name": entry["managed_name"], "unit_cost": entry["unit_cost"]}
     if kind == "msna_subbrand":
         for sb in catalog["sub_brands"]:
             if sb in product_name:
