@@ -7,17 +7,21 @@
 채우도록 되어 있는 구조를 그대로 따른다.
 """
 import json
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 
 import openpyxl
 
 from src.archive import load_orders, ARCHIVE_DIR
+from src.protect import protect_xlsx
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 with open(BASE_DIR / "config" / "settlement_reports.json", encoding="utf-8") as f:
-    _CFG = json.load(f)["vendors"]
+    _FULL_CFG = json.load(f)
+    _CFG = _FULL_CFG["vendors"]
+    EXPORT_PASSWORD = _FULL_CFG.get("export_password")
 
 # 열 번호(1-based) -> 의미. templates/정산_해인.xlsx (TEMPLATE(JM)) 기준.
 COL = {
@@ -36,8 +40,15 @@ def _parse_date(s):
     return datetime.strptime(s, "%Y-%m-%d").date() if isinstance(s, str) else s
 
 
-def generate_settlement_report(vendor, start_date, end_date, out_path, archive_dir=ARCHIVE_DIR):
-    """start_date, end_date: "YYYY-MM-DD" 문자열. 반환: (out_path, 채운 건수)"""
+def generate_settlement_report(
+    vendor, start_date, end_date, out_path, archive_dir=ARCHIVE_DIR,
+    protect=True, password=None,
+):
+    """start_date, end_date: "YYYY-MM-DD" 문자열. 반환: (out_path, 채운 건수).
+
+    protect=True(기본값)면 결과 파일에 password(기본은 config의 export_password,
+    즉 조직 공용 열람 암호)로 열기암호를 걸어 out_path에 저장한다. 개인정보가
+    들어있는 파일이라 권한 없는 사람이 못 열게 하려는 목적."""
     if vendor not in _CFG:
         raise ValueError(f"'{vendor}' 협력사의 정산 리포트 양식이 아직 설정되어 있지 않습니다.")
     cfg = _CFG[vendor]
@@ -91,5 +102,16 @@ def generate_settlement_report(vendor, start_date, end_date, out_path, archive_d
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(out_path)
+
+    if not protect:
+        wb.save(out_path)
+        return out_path, len(rows)
+
+    pwd = password or EXPORT_PASSWORD
+    if not pwd:
+        raise ValueError("protect=True인데 사용할 비밀번호가 없습니다 (config의 export_password 확인).")
+    with tempfile.TemporaryDirectory(prefix="settlement-unprotected-") as tmp_dir:
+        tmp_path = Path(tmp_dir) / out_path.name
+        wb.save(tmp_path)
+        protect_xlsx(tmp_path, out_path, pwd)
     return out_path, len(rows)
