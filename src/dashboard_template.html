@@ -603,7 +603,7 @@ async function init(){
   if (!dbAvailable || dates.length < 2) range = "today";
 
   const bs = $("brandSeg");
-  ["전체","JM","MSNA"].forEach(v => {
+  ["전체","JM","MSNA","MH"].forEach(v => {
     const b = el("button",null,v); b.type = "button"; b.dataset.v = v;
     b.addEventListener("click", () => { brand = v; selectedDay = null; render(); });
     bs.appendChild(b);
