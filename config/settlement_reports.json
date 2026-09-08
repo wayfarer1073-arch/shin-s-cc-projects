@@ -1,29 +1,52 @@
 {
-  "_comment": "정산 리포트(협력사 정산용 엑셀 양식)를 기간별로 생성할 때 쓰는 설정. 컬럼은 업로드받은 샘플(2026년 4월/5월 시트)의 A~AP 순서를 그대로 따른다. 원가/수수료/택배비처럼 우리 데이터로 확인 불가능한 컬럼은 여기서 채우지 않고 templates 파일의 '관리상품명'/'수수료정리' 참고 시트를 보고 사람이 나중에 채운다.",
-  "export_password": "7238",
-  "_export_password_note": "생성한 정산 리포트(주문 건별 개인정보 포함)를 파일로 전달할 때는 이 비밀번호로 열기암호를 걸어 조직 내 권한 없는 사람이 열 수 없도록 한다 (src/protect.py).",
-  "vendors": {
-    "해인": {
-      "template_file": "templates/정산_해인.xlsx",
+  "_comment": "정산 리포트는 협력사별 양식이 아니라 브랜드 하나가 그 브랜드의 모든 주문(어느 협력사 것이든)을 한 표에 정리하는 공용 양식이다. 지급매입처/배송처(협력사) 컬럼은 주문마다 실제 분류된 협력사로 다르게 채워진다. 컬럼은 업로드받은 JM 4월/5월 샘플의 A~AP 순서를 그대로 따른다.",
+  "brands": {
+    "JM": {
+      "template_file": "templates/정산_JM.xlsx",
       "template_sheet": "TEMPLATE(JM)",
       "header_row": 7,
       "data_start_row": 8,
       "title_cell": "A1",
       "title_template": "■ {year}년 택배배송 주문서 정리본",
+      "catalog_file": "data/reference/catalog_JM.json",
       "static_by_col": {
         "H": "JM",
-        "I": "해인",
         "J": "JM",
-        "K": "해인",
         "AB": "주식회사 제이엠통상",
         "AC": "02-6949-2588",
         "AD": "경북 영주시 순흥면 석교리 412-6"
       },
       "_static_col_meaning": {
-        "H": "매출채널", "I": "지급매입처", "J": "회수주문처", "K": "배송처",
+        "H": "매출채널", "J": "회수주문처",
         "AB": "보내는분성명", "AC": "보내는분전화번호", "AD": "보내는분주소"
       },
-      "_needs_confirmation": "H/I/J/K가 항상 이 값('JM'=제이엠통상 자신, '해인')인지는 업로드해주신 4월/5월 샘플만 보고 추정한 것. 다른 값이 나오는 경우가 있으면 알려주세요."
+      "_dynamic_col_meaning": {
+        "I": "지급매입처(=그 주문의 실제 분류된 협력사, rec.vendor)",
+        "K": "배송처(=지급매입처와 동일하게 처리)",
+        "S": "관리 상품명(카탈로그에서 상품명+옵션이 정확히 일치하면 채움)",
+        "X": "매입단가(카탈로그에 있으면 채우고, 있으면 Y/Z/AA 수식도 같이 채움)"
+      },
+      "_needs_confirmation": "H/J/AB/AC/AD가 협력사와 무관하게 항상 이 값(브랜드=JM 고정)인지는 업로드해주신 4월/5월 샘플만 보고 추정한 것. 다른 값이 나오는 경우가 있으면 알려주세요."
+    },
+    "MSNA": {
+      "template_file": "templates/정산_MSNA.xlsx",
+      "template_sheet": "TEMPLATE(MSNA)",
+      "header_row": 7,
+      "data_start_row": 8,
+      "title_cell": "A1",
+      "title_template": "■ {year}년 택배배송 주문서 정리본",
+      "static_by_col": {
+        "H": "MSNA ",
+        "J": "MSNA "
+      },
+      "_static_col_meaning": {
+        "H": "매출채널", "J": "회수주문처"
+      },
+      "_dynamic_col_meaning": {
+        "I": "지급매입처(=그 주문의 실제 분류된 협력사, rec.vendor)",
+        "K": "배송처(=지급매입처와 동일하게 처리)"
+      },
+      "_note": "업로드해주신 7~9월(MSNA) 실데이터 확인 결과 컬럼 구조는 JM과 완전히 동일하지만, 보내는분성명/전화번호/주소(AB/AC/AD)는 협력사마다 발송지가 달라 항상 공란이었음 (JM처럼 고정 주소가 없음). 관리상품명/매입단가를 채울 카탈로그 데이터(정확한 옵션·원가 매칭)가 아직 없어 catalog_file은 비워둠 — S/X는 공란으로 남는다."
     }
   }
 }
