@@ -33,13 +33,15 @@ _NO_HEADERS = {"NO", "No.", "No", "no", "번호", "순번"}
 
 def _build_col_map(ws, cfg):
     """열 번호 -> ("static", 값) | ("combine",) | ("seq",) | ("year"/"month"/"day",)
-    | ("shipment_flag",) | ("field", 표준필드명) | ("code",) 로 매핑한다. 매핑되지
-    않은 열은 자동으로 채우지 않고 비워둔다(택배사/송장번호 등 나중에 수기로 채우는 열)."""
+    | ("shipment_flag",) | ("field", 표준필드명) | ("code",) | ("name_pair", "a"|"b")
+    로 매핑한다. 매핑되지 않은 열은 자동으로 채우지 않고 비워둔다(택배사/송장번호
+    등 나중에 수기로 채우는 열)."""
     header_row = cfg["header_row"]
     field_overrides = cfg.get("field_overrides", {})
     static_fields = cfg.get("static_fields", {})
     combine_field = cfg.get("combine_product_option_field")
     code_column = cfg.get("code_column")
+    name_pair_columns = cfg.get("name_pair_columns", {})
 
     col_map = {}
     for c in range(1, ws.max_column + 1):
@@ -56,6 +58,8 @@ def _build_col_map(ws, cfg):
             col_map[c] = ("combine",)
         elif code_column and header == code_column:
             col_map[c] = ("code",)
+        elif header in name_pair_columns:
+            col_map[c] = ("name_pair", name_pair_columns[header])
         elif header in field_overrides:
             col_map[c] = ("field", field_overrides[header])
         elif header in _NO_HEADERS:
@@ -118,6 +122,49 @@ def _code_for(vendor_name, cfg, rec):
     return None
 
 
+# ---------------------------------------------------------------------------
+# 상품명/옵션명 쌍 조회: 협력사 자체 상품 목록(예: 이엑스 "상품"/"상품명" 두 컬럼
+# 조합)을 data/reference/names_{협력사}.json({"a":.., "b":..} 쌍 목록)으로 갖고
+# 있는 경우, 주문 상품명+옵션과 매칭되면 그 협력사 고유 표기(a, b)를 그대로 쓴다.
+# 매치가 없으면 우리 쪽 상품명을 그대로 양쪽 컬럼에 채운다(공란보다는 낫다).
+# ---------------------------------------------------------------------------
+_NAME_PAIR_MATCH_MIN_LEN = 4
+_name_pair_tables = {}
+
+
+def _load_name_pair_table(vendor_name, cfg):
+    if vendor_name not in _name_pair_tables:
+        pair_file = cfg.get("name_pair_lookup_file")
+        if not pair_file:
+            _name_pair_tables[vendor_name] = None
+        else:
+            with open(BASE_DIR / pair_file, encoding="utf-8") as f:
+                entries = json.load(f)
+            items = []
+            for e in entries:
+                norm_a = _normalize_for_code(e["a"])
+                norm_b = _normalize_for_code(e["b"])
+                match_key = norm_a if len(norm_a) >= len(norm_b) else norm_b
+                if len(match_key) >= _NAME_PAIR_MATCH_MIN_LEN:
+                    items.append((match_key, e["a"], e["b"]))
+            items.sort(key=lambda x: len(x[0]), reverse=True)
+            _name_pair_tables[vendor_name] = items
+    return _name_pair_tables[vendor_name]
+
+
+def _name_pair_match(vendor_name, cfg, rec):
+    table = _load_name_pair_table(vendor_name, cfg)
+    if not table:
+        return None
+    text = _normalize_for_code(f"{rec.get('product_name') or ''} {rec.get('option') or ''}")
+    if not text:
+        return None
+    for match_key, a, b in table:
+        if match_key in text:
+            return {"a": a, "b": b}
+    return None
+
+
 def _capture_row_style(ws, row_idx, max_col):
     styles = {}
     for c in range(1, max_col + 1):
@@ -153,6 +200,11 @@ def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cf
         return rec.get(kind_spec[1]) or None
     if kind == "code":
         return _code_for(vendor_name, cfg, rec)
+    if kind == "name_pair":
+        match = _name_pair_match(vendor_name, cfg, rec)
+        if match:
+            return match[kind_spec[1]]
+        return rec.get("product_name") or None
     return None
 
 
