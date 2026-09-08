@@ -1,6 +1,5 @@
 <title>주문 처리 대시보드</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
     color-scheme: light;
@@ -107,19 +106,6 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .export-btn {
-    font: inherit;
-    font-size: 12.5px;
-    font-weight: 700;
-    color: #ffffff;
-    background: var(--series-3);
-    border: none;
-    border-radius: 999px;
-    padding: 7px 14px;
-    cursor: pointer;
-  }
-  .export-btn:hover { filter: brightness(1.08); }
-  .export-btn:disabled { opacity: 0.5; cursor: default; filter: none; }
 
   /* --- 기간 선택 --- */
   .range-bar {
@@ -625,7 +611,6 @@
     <div style="display:flex; align-items:center; gap:10px;">
       <div class="run-date" id="runDate"></div>
       <div id="reconChip"></div>
-      <button class="export-btn" id="exportBtn" hidden>📥 기간 내 매출집계.xlsx</button>
     </div>
   </header>
 
@@ -788,16 +773,9 @@
   // ---------------------------------------------------------------------
   // 렌더링 (기간 선택에 따라 반복 호출됨)
   // ---------------------------------------------------------------------
-  let currentAgg = null;
-  let currentLabel = "";
-
   function renderView(agg, opts) {
     const isMulti = opts.isMulti;
     const dayCount = agg.dates.length;
-    currentAgg = agg;
-    currentLabel = opts.label;
-    const exportBtn = document.getElementById("exportBtn");
-    exportBtn.hidden = dayCount === 0;
 
     document.getElementById("runDate").textContent = opts.label;
 
@@ -1018,82 +996,6 @@
   }
 
   // ---------------------------------------------------------------------
-  // 기간 내 매출집계 엑셀 다운로드
-  // ---------------------------------------------------------------------
-  function buildExportWorkbook(agg, label) {
-    const wb = XLSX.utils.book_new();
-
-    const summaryRows = [
-      ["기간", label],
-      ["총 매출액(원)", agg.total_revenue || 0],
-      ["금액 정보 없는 라인 수", agg.revenue_missing_count || 0],
-      ["전체 주문 건수", agg.total_order_count || 0],
-      ["처리 라인 수", agg.total_line_count || 0],
-      ["확인 필요(미분류+중복매칭) 건수", (agg.unclassified_count || 0) + (agg.ambiguous_count || 0)],
-    ];
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), "요약");
-
-    const marketRows = [["오픈마켓", "주문 건수"]];
-    Object.entries(agg.market_order_counts || {})
-      .sort((a, b) => b[1] - a[1])
-      .forEach(([name, count]) => marketRows.push([name, count]));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(marketRows), "오픈마켓별 집계");
-
-    const vendorRows = [["협력사", "주문 건수"]];
-    Object.entries(agg.vendor_order_counts || {})
-      .sort((a, b) => b[1] - a[1])
-      .forEach(([name, count]) => vendorRows.push([name, count]));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(vendorRows), "협력사별 집계");
-
-    const productRows = [["상품명", "판매수량", "매출액(원)", "매출 비중(%)"]];
-    Object.entries(agg.product_breakdown || {})
-      .sort((a, b) => b[1].quantity - a[1].quantity)
-      .forEach(([name, v]) => {
-        const share = agg.total_revenue ? Math.round(v.revenue / agg.total_revenue * 1000) / 10 : "";
-        productRows.push([name, v.quantity, v.revenue, share]);
-      });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(productRows), "상품별 판매집계");
-
-    if (agg.daily_revenue && agg.daily_revenue.length > 1) {
-      const dailyRows = [["날짜", "매출액(원)"]];
-      agg.daily_revenue.forEach(d => dailyRows.push([d.run_date, d.revenue]));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dailyRows), "일별 매출");
-    }
-
-    return wb;
-  }
-
-  async function exportCurrentView() {
-    if (!currentAgg) return;
-    const exportBtn = document.getElementById("exportBtn");
-    const originalText = exportBtn.textContent;
-    exportBtn.disabled = true;
-    try {
-      const downloads = await claude.use("downloads");
-      if (!downloads) {
-        exportBtn.textContent = "다운로드 기능을 사용할 수 없음";
-        setTimeout(() => { exportBtn.textContent = originalText; }, 2500);
-        return;
-      }
-      const wb = buildExportWorkbook(currentAgg, currentLabel);
-      const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-      const dates = currentAgg.dates || [];
-      const rangePart = dates.length > 1 ? `${dates[0]}_${dates[dates.length - 1]}` : (dates[0] || "");
-      await downloads.save({
-        filename: `기간내_매출집계_${rangePart}.xlsx`,
-        data: buf,
-      });
-    } catch (e) {
-      if (e && e.code !== "declined") {
-        exportBtn.textContent = "다운로드 실패";
-        setTimeout(() => { exportBtn.textContent = originalText; }, 2500);
-      }
-    } finally {
-      exportBtn.disabled = false;
-    }
-  }
-
-  // ---------------------------------------------------------------------
   // 기간 계산
   // ---------------------------------------------------------------------
   function parseDate(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
@@ -1155,8 +1057,6 @@
   // 초기화: db capability로 과거 기록을 불러오고, 없으면 오늘 데이터만 사용
   // ---------------------------------------------------------------------
   async function init() {
-    document.getElementById("exportBtn").addEventListener("click", exportCurrentView);
-
     let currentBrand = "전체";
     let lastAction = () => {};
     document.getElementById("brandSelect").addEventListener("change", (e) => {

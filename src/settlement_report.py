@@ -42,13 +42,14 @@ def _parse_date(s):
 
 def generate_settlement_report(
     vendor, start_date, end_date, out_path, archive_dir=ARCHIVE_DIR,
-    protect=True, password=None,
+    protect=False, password=None,
 ):
     """start_date, end_date: "YYYY-MM-DD" 문자열. 반환: (out_path, 채운 건수).
 
-    protect=True(기본값)면 결과 파일에 password(기본은 config의 export_password,
-    즉 조직 공용 열람 암호)로 열기암호를 걸어 out_path에 저장한다. 개인정보가
-    들어있는 파일이라 권한 없는 사람이 못 열게 하려는 목적."""
+    매월 1일에 지난달 리포트를 자동 발송하는 용도라 기본은 암호 없이(protect=False)
+    생성한다 — 대시보드에 공개 다운로드 버튼으로 노출하려던 계획이 취소되면서
+    암호가 굳이 필요 없어졌기 때문. 필요하면 protect=True로 켤 수 있다
+    (비밀번호는 password 인자 또는 config의 export_password)."""
     if vendor not in _CFG:
         raise ValueError(f"'{vendor}' 협력사의 정산 리포트 양식이 아직 설정되어 있지 않습니다.")
     cfg = _CFG[vendor]
