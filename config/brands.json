@@ -10,6 +10,12 @@
       "label": "MSNA (엠에스앤에이)",
       "catalog_file": "data/reference/catalog_MSNA.json",
       "catalog_type": "msna_subbrand"
+    },
+    "MH": {
+      "label": "MH",
+      "catalog_file": "data/reference/catalog_MH.json",
+      "catalog_type": "jm_exact",
+      "_note": "1~9월 실제 주문 원본(지급매입처/배송처 컬럼)에서 상품명+옵션별 배송처를 다수결로 뽑아 만든 카탈로그. 사용자 확인에 따라 vendor는 실제 포장·발송하는 '배송처' 기준(지급매입처가 다른 경우도 있었음). 상품명+옵션 조합 79건은 배송처가 여러 곳으로 갈렸던 것을 다수결로 정리했다(대부분 이플코리아가 기본 배송 대행). 아직 협력사별 가공양식(templates/*.xlsx)은 등록 전이라 분류만 되고 실제 엑셀 작성은 안 됨 — vendors.json에 없는 협력사는 미분류로 남는다."
     }
   }
 }
