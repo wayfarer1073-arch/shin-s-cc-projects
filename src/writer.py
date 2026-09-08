@@ -42,6 +42,7 @@ def _build_col_map(ws, cfg):
     combine_field = cfg.get("combine_product_option_field")
     code_column = cfg.get("code_column")
     name_pair_columns = cfg.get("name_pair_columns", {})
+    option_canon_file = cfg.get("option_canon_file")
 
     col_map = {}
     for c in range(1, ws.max_column + 1):
@@ -60,6 +61,9 @@ def _build_col_map(ws, cfg):
             col_map[c] = ("code",)
         elif header in name_pair_columns:
             col_map[c] = ("name_pair", name_pair_columns[header])
+        elif option_canon_file and (header in field_overrides and field_overrides[header] == "option"
+                                     or header in _HEADER_TO_FIELD and _HEADER_TO_FIELD[header] == "option"):
+            col_map[c] = ("canon_option",)
         elif header in field_overrides:
             col_map[c] = ("field", field_overrides[header])
         elif header in _NO_HEADERS:
@@ -136,7 +140,26 @@ def _code_for(vendor_name, cfg, rec):
 # 매치가 없으면 우리 쪽 상품명을 그대로 양쪽 컬럼에 채운다(공란보다는 낫다).
 # ---------------------------------------------------------------------------
 _name_pair_tables = {}
-_TOKEN_RE = re.compile(r'[가-힣]{2,}|\d+g')
+_TOKEN_RE = re.compile(r'\d+[가-힣a-zA-Z]*|[가-힣]{2,}')
+
+
+def _tokenize(s):
+    """의미 있는 단어(한글 2글자 이상)와 단위 붙은 수량 표기(15포/750g/20티백
+    등)를 뽑는다. 단위 없는 맨숫자(그냥 "1")는 어디에나 있을 수 있어 제외한다."""
+    return {t for t in _TOKEN_RE.findall(s) if not t.isdigit()}
+
+
+def _best_token_match(text, candidates):
+    """candidates: [(tokens, payload), ...]. 필수 토큰이 전부 text에 있는 후보 중
+    가장 구체적인(토큰 글자수 합이 큰) 것의 payload를 반환. 없으면 None.
+    candidates는 미리 구체적인 순서로 정렬돼 있어야 한다. 공백 차이로 매칭이
+    실패하지 않도록 text에서 공백을 제거하고 비교한다(토큰 쪽은 애초에 정규식이
+    공백을 넘어가지 않아 공백이 섞이지 않는다)."""
+    text = re.sub(r'\s+', '', text)
+    for tokens, payload in candidates:
+        if all(tok in text for tok in tokens):
+            return payload
+    return None
 
 
 def _load_name_pair_table(vendor_name, cfg):
@@ -149,10 +172,9 @@ def _load_name_pair_table(vendor_name, cfg):
                 entries = json.load(f)
             items = []
             for e in entries:
-                tokens = set(_TOKEN_RE.findall(e["a"]))
+                tokens = _tokenize(e["a"])
                 if tokens:
-                    items.append((tokens, e["a"], e["b"]))
-            # 필수 토큰이 많은(더 구체적인) 후보부터 검사
+                    items.append((tokens, (e["a"], e["b"])))
             items.sort(key=lambda x: sum(len(t) for t in x[0]), reverse=True)
             _name_pair_tables[vendor_name] = items
     return _name_pair_tables[vendor_name]
@@ -165,10 +187,44 @@ def _name_pair_match(vendor_name, cfg, rec):
     text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
     if not text.strip():
         return None
-    for tokens, a, b in table:
-        if all(tok in text for tok in tokens):
-            return {"a": a, "b": b}
-    return None
+    payload = _best_token_match(text, table)
+    return {"a": payload[0], "b": payload[1]} if payload else None
+
+
+# ---------------------------------------------------------------------------
+# 옵션명 정규화: 협력사가 인정하는 옵션명 목록(예: "이플코리아 옵션명" 참고
+# 시트, data/reference/options_{협력사}.json 문자열 리스트)이 있는 경우, 우리
+# 쪽 옵션 텍스트가 두루뭉술해도 상품명+옵션 전체에서 그 목록의 항목과 토큰이
+# 다 겹치면 그 정식 옵션명으로 바꿔 쓴다. 매치가 없으면 원래 옵션 텍스트를
+# 그대로 둔다.
+# ---------------------------------------------------------------------------
+_option_canon_tables = {}
+
+
+def _load_option_canon_table(vendor_name, cfg):
+    if vendor_name not in _option_canon_tables:
+        opt_file = cfg.get("option_canon_file")
+        if not opt_file:
+            _option_canon_tables[vendor_name] = None
+        else:
+            with open(BASE_DIR / opt_file, encoding="utf-8") as f:
+                entries = json.load(f)
+            items = [(_tokenize(e), e) for e in entries]
+            items = [(t, e) for t, e in items if t]
+            items.sort(key=lambda x: sum(len(t) for t in x[0]), reverse=True)
+            _option_canon_tables[vendor_name] = items
+    return _option_canon_tables[vendor_name]
+
+
+def _canon_option_for(vendor_name, cfg, rec):
+    table = _load_option_canon_table(vendor_name, cfg)
+    if not table:
+        return rec.get("option") or None
+    text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
+    if not text.strip():
+        return rec.get("option") or None
+    match = _best_token_match(text, table)
+    return match if match else (rec.get("option") or None)
 
 
 def _capture_row_style(ws, row_idx, max_col):
@@ -211,6 +267,8 @@ def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cf
         if match:
             return match[kind_spec[1]]
         return rec.get("product_name") or None
+    if kind == "canon_option":
+        return _canon_option_for(vendor_name, cfg, rec)
     return None
 
 

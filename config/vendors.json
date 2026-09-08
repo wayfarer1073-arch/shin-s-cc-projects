@@ -44,7 +44,8 @@
       "summary_row": 2,
       "header_row": 3,
       "data_start_row": 4,
-      "_needs_confirmation": "샘플에서 관측된 브랜드는 '데이너프' 하나뿐. 이플코리아가 취급하는 다른 브랜드가 있다면 추가 필요."
+      "_needs_confirmation": "샘플에서 관측된 브랜드는 '데이너프' 하나뿐. 이플코리아가 취급하는 다른 브랜드가 있다면 추가 필요. 정리본의 \"이플코리아 옵션명\" 참고 목록(132건)에서 상품명+옵션 텍스트와 토큰이 겹치는 정식 옵션명을 찾으면 그걸로 옵션 컬럼을 채운다. 매치 안 되면 원래 옵션 텍스트 유지.",
+      "option_canon_file": "data/reference/options_이플코리아.json"
     },
     "해인": {
       "brand_keywords": [
