@@ -594,6 +594,20 @@
     padding: 6px 12px;
     cursor: pointer;
   }
+
+  #tiles[hidden], #panelsSection[hidden] { display: none; }
+
+  .empty-state {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    padding: 56px 24px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
 </style>
 
 <div class="wrap">
@@ -634,6 +648,8 @@
     <span class="range-note" id="rangeNote"></span>
   </div>
 
+  <div class="empty-state" id="emptyState" hidden></div>
+
   <div class="hero-revenue" id="heroRevenue"></div>
 
   <div class="tiles" id="tiles"></div>
@@ -645,7 +661,7 @@
     <div class="trend-axis" id="trendAxis"></div>
   </div>
 
-  <div class="panels">
+  <div class="panels" id="panelsSection">
     <section class="panel market">
       <h2>오픈마켓별 주문 건수</h2>
       <p class="sub">고유 주문번호 기준</p>
@@ -658,7 +674,7 @@
     </section>
   </div>
 
-  <section class="leaderboard">
+  <section class="leaderboard" id="leaderboardSection">
     <h2>TOP 5 판매 제품</h2>
     <p class="sub" id="top5Sub">전체 마켓 합산 판매수량 기준</p>
     <div id="top5"></div>
@@ -768,6 +784,34 @@
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 5);
     return agg;
+  }
+
+  // ---------------------------------------------------------------------
+  // 빈 상태: 데이터가 아예 없거나(부재) / 선택한 기간에 해당하는 누적 데이터가
+  // 없을 때(부족) 다른 패널 대신 안내 메시지만 노출한다.
+  // ---------------------------------------------------------------------
+  const MSG_NO_DATA = "There is no data. Please upload .xlsx to Claude let to research.";
+  const MSG_LACK_DATA = "Lack of saved data. See you later.";
+
+  function showEmptyState(message) {
+    const empty = document.getElementById("emptyState");
+    empty.hidden = false;
+    empty.textContent = message;
+    document.getElementById("heroRevenue").hidden = true;
+    document.getElementById("tiles").hidden = true;
+    document.getElementById("trendPanel").hidden = true;
+    document.getElementById("panelsSection").hidden = true;
+    document.getElementById("leaderboardSection").hidden = true;
+    document.getElementById("reportSection").hidden = true;
+    clear(document.getElementById("reconChip"));
+  }
+  function hideEmptyState() {
+    document.getElementById("emptyState").hidden = true;
+    document.getElementById("heroRevenue").hidden = false;
+    document.getElementById("tiles").hidden = false;
+    document.getElementById("panelsSection").hidden = false;
+    document.getElementById("leaderboardSection").hidden = false;
+    // trendPanel / reportSection의 노출 여부는 renderView가 isMulti에 따라 결정한다.
   }
 
   // ---------------------------------------------------------------------
@@ -1082,6 +1126,7 @@
 
     const dates = [...new Set(allDocs.map(d => d.run_date))].sort();
     const latestDate = parseDate(dates[dates.length - 1]);
+    const hasAnyDataEver = allDocs.some(d => (d.total_order_count || 0) > 0);
 
     const rangeBar = document.getElementById("rangeBar");
     const rangeNote = document.getElementById("rangeNote");
@@ -1201,13 +1246,25 @@
       dateBtn.textContent = "📅 날짜 선택";
       pendingStart = null;
       selectedRange = null;
+
+      if (!hasAnyDataEver) {
+        document.getElementById("runDate").textContent = "";
+        showEmptyState(MSG_NO_DATA);
+        return;
+      }
+
       const docs = selectRange(allDocs, rangeKey, latestDate).map(d => sliceForBrand(d, currentBrand)).filter(Boolean);
+      if (docs.length === 0) {
+        document.getElementById("runDate").textContent = "";
+        showEmptyState(MSG_LACK_DATA);
+        return;
+      }
+      hideEmptyState();
+
       const agg = aggregate(docs);
       const labels = { today: "오늘", week: "최근 7일", month: "이번 달", quarter: "이번 분기" };
       let label;
-      if (docs.length === 0) {
-        label = "데이터 없음";
-      } else if (docs.length === 1) {
+      if (docs.length === 1) {
         label = `${fmtDateLabel(docs[0].run_date)} 처리 결과`;
       } else {
         label = `${labels[rangeKey] || rangeKey} (${fmtShortDate(docs[0].run_date)} ~ ${fmtShortDate(docs[docs.length - 1].run_date)}) 처리 결과`;
@@ -1223,7 +1280,21 @@
       dateBtn.textContent = start === end
         ? `📅 ${fmtDateLabel(start)}`
         : `📅 ${fmtShortDate(start)} ~ ${fmtShortDate(end)}`;
+
+      if (!hasAnyDataEver) {
+        document.getElementById("runDate").textContent = "";
+        showEmptyState(MSG_NO_DATA);
+        return;
+      }
+
       const docs = selectRange(allDocs, { start, end }, latestDate).map(d => sliceForBrand(d, currentBrand)).filter(Boolean);
+      if (docs.length === 0) {
+        document.getElementById("runDate").textContent = "";
+        showEmptyState(MSG_LACK_DATA);
+        return;
+      }
+      hideEmptyState();
+
       const agg = aggregate(docs);
       const label = start === end
         ? `${fmtDateLabel(start)} 처리 결과`
