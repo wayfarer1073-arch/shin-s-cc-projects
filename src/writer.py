@@ -27,7 +27,7 @@ for _field, _names in FIELD_TO_HEADERS.items():
     for _name in _names:
         _HEADER_TO_FIELD[_name] = _field
 
-_NO_HEADERS = {"NO", "No.", "No", "no", "번호"}
+_NO_HEADERS = {"NO", "No.", "No", "no", "번호", "순번"}
 
 
 def _build_col_map(ws, cfg):
