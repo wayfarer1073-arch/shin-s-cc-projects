@@ -16,6 +16,7 @@ from src.writer import VENDORS, write_vendor_file, write_review_file
 from src.summary import compute_summary
 from src.dashboard import render_dashboard_html
 from src.reconcile import check_no_omission, collect_special_notes, collect_missing_info
+from src.archive import archive_orders
 
 
 def run(input_paths, out_dir):
@@ -65,6 +66,9 @@ def run(input_paths, out_dir):
         review_path = out_dir / f"확인필요_{run_date}.xlsx"
         write_review_file(unclassified, ambiguous, review_path)
         print(f"[확인 필요] 미분류 {len(unclassified)}건, 중복매칭 {len(ambiguous)}건 -> {review_path}")
+
+    archive_path = archive_orders(by_vendor, unclassified, ambiguous, run_date)
+    print(f"[보관] 주문 원본 라인 {len(all_rows)}건 -> {archive_path}")
 
     # --- 원본 대조: 누락 건 및 특이사항 조사 ---
     reconciliation = check_no_omission(all_rows, by_vendor, unclassified, ambiguous)
