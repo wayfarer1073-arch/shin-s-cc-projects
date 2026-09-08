@@ -583,9 +583,43 @@
   .note-item .n-who { color: var(--text-1); font-weight: 500; }
   .note-item .n-what { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .note-item .n-flag { color: var(--critical); font-weight: 600; text-align: right; }
+
+  .brand-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .brand-bar label {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .brand-select {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-1);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
 </style>
 
 <div class="wrap">
+  <div class="brand-bar">
+    <label for="brandSelect">브랜드</label>
+    <select class="brand-select" id="brandSelect">
+      <option value="전체">전체</option>
+      <option value="JM">JM</option>
+      <option value="MSNA">MSNA</option>
+    </select>
+  </div>
+
   <header class="top">
     <h1>주문 처리 대시보드</h1>
     <div style="display:flex; align-items:center; gap:10px;">
@@ -1092,11 +1126,43 @@
     return allDocs.filter(d => d.run_date === rangeKey);
   }
 
+  // 브랜드 필터: "전체"면 문서를 그대로 쓰고, 특정 브랜드면 그 문서의
+  // by_brand[브랜드] 조각으로 바꿔치기한다. 그 브랜드 데이터가 없는 날은 제외.
+  function sliceForBrand(doc, brandFilter) {
+    if (!brandFilter || brandFilter === "전체") return doc;
+    const b = doc.by_brand && doc.by_brand[brandFilter];
+    if (!b) return null;
+    return {
+      run_date: doc.run_date,
+      total_order_count: b.total_order_count,
+      total_line_count: b.total_line_count,
+      market_order_counts: b.market_order_counts,
+      vendor_order_counts: b.vendor_order_counts,
+      unclassified_count: b.unclassified_count,
+      ambiguous_count: b.ambiguous_count,
+      top5_products: b.top5_products,
+      product_breakdown: b.product_breakdown,
+      total_revenue: b.total_revenue,
+      revenue_missing_count: b.revenue_missing_count,
+      reconciliation: { match: true },
+      special_notes: [],
+      missing_info: [],
+      highlight_totals: { quantity: 0, duplicate_address: 0, both: 0 },
+    };
+  }
+
   // ---------------------------------------------------------------------
   // 초기화: db capability로 과거 기록을 불러오고, 없으면 오늘 데이터만 사용
   // ---------------------------------------------------------------------
   async function init() {
     document.getElementById("exportBtn").addEventListener("click", exportCurrentView);
+
+    let currentBrand = "전체";
+    let lastAction = () => {};
+    document.getElementById("brandSelect").addEventListener("change", (e) => {
+      currentBrand = e.target.value;
+      lastAction();
+    });
 
     let allDocs = [embeddedSummary];
     let dbAvailable = false;
@@ -1229,12 +1295,13 @@
     });
 
     function apply(rangeKey) {
+      lastAction = () => apply(rangeKey);
       document.querySelectorAll(".range-btn").forEach(b => b.classList.toggle("active", b.dataset.range === rangeKey));
       dateBtn.classList.remove("active");
       dateBtn.textContent = "📅 날짜 선택";
       pendingStart = null;
       selectedRange = null;
-      const docs = selectRange(allDocs, rangeKey, latestDate);
+      const docs = selectRange(allDocs, rangeKey, latestDate).map(d => sliceForBrand(d, currentBrand)).filter(Boolean);
       const agg = aggregate(docs);
       const labels = { today: "오늘", week: "최근 7일", month: "이번 달", quarter: "이번 분기" };
       let label;
@@ -1249,13 +1316,14 @@
     }
 
     function applyCustomRange(start, end) {
+      lastAction = () => applyCustomRange(start, end);
       document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
       dateBtn.classList.add("active");
       selectedRange = { start, end };
       dateBtn.textContent = start === end
         ? `📅 ${fmtDateLabel(start)}`
         : `📅 ${fmtShortDate(start)} ~ ${fmtShortDate(end)}`;
-      const docs = selectRange(allDocs, { start, end }, latestDate);
+      const docs = selectRange(allDocs, { start, end }, latestDate).map(d => sliceForBrand(d, currentBrand)).filter(Boolean);
       const agg = aggregate(docs);
       const label = start === end
         ? `${fmtDateLabel(start)} 처리 결과`

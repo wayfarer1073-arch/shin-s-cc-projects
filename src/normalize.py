@@ -10,6 +10,8 @@ from datetime import datetime, date
 
 import openpyxl
 
+from src.filename_meta import parse_filename
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 ALIASES_PATH = BASE_DIR / "config" / "column_aliases.json"
 
@@ -84,7 +86,14 @@ def _normalize_date(v):
 
 
 def read_market_file(path):
-    """오픈마켓 원본 주문서 1개를 읽어 표준 필드 dict의 리스트로 반환한다."""
+    """오픈마켓 원본 주문서 1개를 읽어 표준 필드 dict의 리스트로 반환한다.
+
+    파일명이 "{YYMMDD} {브랜드} {매출처} 주문서.xlsx" 규칙을 따르면 그 일자/브랜드/
+    매출처를 우선 사용하고, 안 맞으면(과거 방식 파일) 파일 내용 기반 추론으로
+    넘어간다 — brand는 파일명에서만 얻을 수 있으므로 규칙에 안 맞으면 None이 된다.
+    """
+    filename_meta = parse_filename(Path(path).name)
+
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb.worksheets[0]
     header_row = _find_header_row(ws)
@@ -110,10 +119,13 @@ def read_market_file(path):
 
         rec = {field: raw.get(field) for field in CANONICAL_FIELDS}
         rec["receiver_phone"] = _normalize_phone(rec.get("receiver_phone"))
-        rec["order_date"] = _normalize_date(rec.get("order_date"))
+        rec["order_date"] = _normalize_date(rec.get("order_date")) or filename_meta["order_date"]
         rec["product_name"] = (rec.get("product_name") or "").strip()
         rec["option"] = (rec.get("option") or "").strip()
         rec["payment_amount"] = _normalize_amount(rec.get("payment_amount"))
+        if filename_meta["market"]:
+            rec["shop_name"] = filename_meta["market"]
+        rec["brand"] = filename_meta["brand"]
         try:
             rec["quantity"] = int(rec["quantity"]) if rec.get("quantity") not in (None, "") else 1
         except (TypeError, ValueError):

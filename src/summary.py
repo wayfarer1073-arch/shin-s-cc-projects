@@ -19,12 +19,10 @@ def _distinct_order_counts(rows_by_group):
     return counts
 
 
-def compute_summary(
-    all_rows, by_vendor, unclassified, ambiguous, run_date,
-    reconciliation=None, special_notes=None, missing_info=None, highlight_totals=None,
-):
+def _core_stats(rows, by_vendor, unclassified, ambiguous):
+    """대시보드가 필요로 하는 핵심 집계 (브랜드 전체/개별 브랜드 공용으로 사용)."""
     by_market = defaultdict(list)
-    for rec in all_rows:
+    for rec in rows:
         market = rec.get("shop_name") or rec.get("_source_file") or "(알수없음)"
         by_market[market].append(rec)
 
@@ -33,18 +31,18 @@ def compute_summary(
 
     product_qty = Counter()
     product_revenue = Counter()
-    for rec in all_rows:
+    for rec in rows:
         key = rec.get("product_name") or "(상품명 없음)"
         product_qty[key] += rec.get("quantity") or 0
         if rec.get("payment_amount") is not None:
             product_revenue[key] += rec["payment_amount"]
 
-    all_order_ids = {r.get("order_id") for r in all_rows if r.get("order_id")}
-    no_id_rows = sum(1 for r in all_rows if not r.get("order_id"))
+    all_order_ids = {r.get("order_id") for r in rows if r.get("order_id")}
+    no_id_rows = sum(1 for r in rows if not r.get("order_id"))
 
-    amounts = [r.get("payment_amount") for r in all_rows if r.get("payment_amount") is not None]
+    amounts = [r.get("payment_amount") for r in rows if r.get("payment_amount") is not None]
     total_revenue = sum(amounts)
-    revenue_missing_count = len(all_rows) - len(amounts)
+    revenue_missing_count = len(rows) - len(amounts)
 
     top5_products = []
     for name, qty in product_qty.most_common(5):
@@ -65,9 +63,8 @@ def compute_summary(
     }
 
     return {
-        "run_date": run_date,
         "total_order_count": len(all_order_ids) + no_id_rows,
-        "total_line_count": len(all_rows),
+        "total_line_count": len(rows),
         "market_order_counts": market_order_counts,
         "vendor_order_counts": vendor_order_counts,
         "unclassified_count": len(unclassified),
@@ -76,6 +73,29 @@ def compute_summary(
         "product_breakdown": product_breakdown,
         "total_revenue": total_revenue,
         "revenue_missing_count": revenue_missing_count,
+    }
+
+
+def compute_summary(
+    all_rows, by_vendor, unclassified, ambiguous, run_date,
+    reconciliation=None, special_notes=None, missing_info=None, highlight_totals=None,
+):
+    stats = _core_stats(all_rows, by_vendor, unclassified, ambiguous)
+
+    brands_present = sorted({r.get("brand") for r in all_rows if r.get("brand")})
+    by_brand = {}
+    for brand in brands_present:
+        rows_b = [r for r in all_rows if r.get("brand") == brand]
+        by_vendor_b = {v: [r for r in recs if r.get("brand") == brand] for v, recs in by_vendor.items()}
+        by_vendor_b = {v: recs for v, recs in by_vendor_b.items() if recs}
+        unclassified_b = [r for r in unclassified if r.get("brand") == brand]
+        ambiguous_b = [r for r in ambiguous if r.get("brand") == brand]
+        by_brand[brand] = _core_stats(rows_b, by_vendor_b, unclassified_b, ambiguous_b)
+
+    return {
+        "run_date": run_date,
+        **stats,
+        "by_brand": by_brand,
         "reconciliation": reconciliation or {},
         "special_notes": special_notes or [],
         "missing_info": missing_info or [],

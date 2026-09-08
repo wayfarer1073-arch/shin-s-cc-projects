@@ -14,7 +14,7 @@ _FIELDS = [
     "order_id", "order_date", "product_name", "option", "quantity",
     "receiver_name", "receiver_phone", "address", "zipcode",
     "delivery_message", "courier", "tracking_no", "shop_name", "payment_amount",
-    "_source_file", "_source_row",
+    "brand", "_source_file", "_source_row",
 ]
 
 
@@ -44,9 +44,9 @@ def archive_orders(by_vendor, unclassified, ambiguous, run_date, archive_dir=ARC
     return out_path
 
 
-def load_orders(start_date, end_date, vendor=None, archive_dir=ARCHIVE_DIR):
+def load_orders(start_date, end_date, vendor=None, brand=None, archive_dir=ARCHIVE_DIR):
     """start_date~end_date(둘 다 포함, "YYYY-MM-DD") 사이에 보관된 주문 라인을 불러온다.
-    vendor를 지정하면 그 협력사로 분류된 것만 반환한다."""
+    vendor를 지정하면 그 협력사로 분류된 것만, brand를 지정하면 그 브랜드 것만 반환한다."""
     archive_dir = Path(archive_dir)
     rows = []
     if not archive_dir.exists():
@@ -59,6 +59,9 @@ def load_orders(start_date, end_date, vendor=None, archive_dir=ARCHIVE_DIR):
             day_rows = json.load(f)
         for r in day_rows:
             r["_run_date"] = run_date
-            if vendor is None or r.get("vendor") == vendor:
-                rows.append(r)
+            if vendor is not None and r.get("vendor") != vendor:
+                continue
+            if brand is not None and r.get("brand") != brand:
+                continue
+            rows.append(r)
     return rows
