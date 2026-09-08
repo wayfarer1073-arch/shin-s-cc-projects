@@ -126,10 +126,17 @@ def _code_for(vendor_name, cfg, rec):
 # 상품명/옵션명 쌍 조회: 협력사 자체 상품 목록(예: 이엑스 "상품"/"상품명" 두 컬럼
 # 조합)을 data/reference/names_{협력사}.json({"a":.., "b":..} 쌍 목록)으로 갖고
 # 있는 경우, 주문 상품명+옵션과 매칭되면 그 협력사 고유 표기(a, b)를 그대로 쓴다.
+#
+# 마켓 원본 상품명은 "카스텔크렘 포지타노 레몬 캔디 750g"처럼 협력사 내부
+# 표기("레몬1 750g")와 단어 순서·구성이 달라 통짜 문자열 부분일치로는 못 찾는
+# 경우가 많다. 대신 "a" 쪽에서 의미 있는 단어(한글 2글자 이상, 용량 표기 NNNg)를
+# 전부 뽑아 그 단어들이 (순서 상관없이) 주문 텍스트에 전부 나타나는지로 판단한다
+# — 예: "레몬1 750g" -> 필수 토큰 {"레몬","750g"} 둘 다 주문 텍스트에 있으면 매치.
+# 후보가 여러 개면 필수 토큰이 더 많고(더 구체적인) 쪽을 우선한다.
 # 매치가 없으면 우리 쪽 상품명을 그대로 양쪽 컬럼에 채운다(공란보다는 낫다).
 # ---------------------------------------------------------------------------
-_NAME_PAIR_MATCH_MIN_LEN = 4
 _name_pair_tables = {}
+_TOKEN_RE = re.compile(r'[가-힣]{2,}|\d+g')
 
 
 def _load_name_pair_table(vendor_name, cfg):
@@ -142,12 +149,11 @@ def _load_name_pair_table(vendor_name, cfg):
                 entries = json.load(f)
             items = []
             for e in entries:
-                norm_a = _normalize_for_code(e["a"])
-                norm_b = _normalize_for_code(e["b"])
-                match_key = norm_a if len(norm_a) >= len(norm_b) else norm_b
-                if len(match_key) >= _NAME_PAIR_MATCH_MIN_LEN:
-                    items.append((match_key, e["a"], e["b"]))
-            items.sort(key=lambda x: len(x[0]), reverse=True)
+                tokens = set(_TOKEN_RE.findall(e["a"]))
+                if tokens:
+                    items.append((tokens, e["a"], e["b"]))
+            # 필수 토큰이 많은(더 구체적인) 후보부터 검사
+            items.sort(key=lambda x: sum(len(t) for t in x[0]), reverse=True)
             _name_pair_tables[vendor_name] = items
     return _name_pair_tables[vendor_name]
 
@@ -156,11 +162,11 @@ def _name_pair_match(vendor_name, cfg, rec):
     table = _load_name_pair_table(vendor_name, cfg)
     if not table:
         return None
-    text = _normalize_for_code(f"{rec.get('product_name') or ''} {rec.get('option') or ''}")
-    if not text:
+    text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
+    if not text.strip():
         return None
-    for match_key, a, b in table:
-        if match_key in text:
+    for tokens, a, b in table:
+        if all(tok in text for tok in tokens):
             return {"a": a, "b": b}
     return None
 
