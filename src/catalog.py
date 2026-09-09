@@ -82,18 +82,50 @@ def _load_msna(cfg):
     return {"sub_brands": sub_brands, "vendor_by_sub_brand": vendor_by_sub_brand}
 
 
+def _load_catalog_of_type(catalog_type, cfg):
+    if catalog_type == "jm_exact":
+        return _load_jm(cfg)
+    if catalog_type == "msna_subbrand":
+        return _load_msna(cfg)
+    return None
+
+
 def _get_catalog(brand):
     if brand not in _BRANDS_CFG:
         return None
     if brand not in _loaded:
         cfg = _BRANDS_CFG[brand]
-        if cfg["catalog_type"] == "jm_exact":
-            _loaded[brand] = ("jm_exact", _load_jm(cfg))
-        elif cfg["catalog_type"] == "msna_subbrand":
-            _loaded[brand] = ("msna_subbrand", _load_msna(cfg))
-        else:
-            _loaded[brand] = (None, None)
+        catalog = _load_catalog_of_type(cfg["catalog_type"], cfg)
+        fallback = None
+        if cfg.get("fallback_catalog_type"):
+            fallback_cfg = {"catalog_file": cfg["fallback_catalog_file"]}
+            fallback = (cfg["fallback_catalog_type"], _load_catalog_of_type(cfg["fallback_catalog_type"], fallback_cfg))
+        _loaded[brand] = (cfg["catalog_type"] if catalog else None, catalog, fallback)
     return _loaded[brand]
+
+
+def _lookup_in(kind, catalog, product_name, option):
+    """(kind, catalog) 하나에 대해서만 조회한다. jm_exact는 정확 매치 실패 시
+    같은 주문상품명에 협력사가 하나뿐이면 그걸로 대체한다."""
+    if not catalog:
+        return None
+    if kind == "jm_exact":
+        entry = catalog["by_name_option"].get((product_name, option or ""))
+        if entry:
+            return {"vendor": entry["vendor"], "managed_name": entry["managed_name"], "unit_cost": entry["unit_cost"]}
+        vendors = catalog["by_name_vendors"].get(product_name)
+        if vendors and len(vendors) == 1:
+            return {"vendor": next(iter(vendors)), "managed_name": None, "unit_cost": None}
+        return None
+    if kind == "msna_subbrand":
+        for sb in catalog["sub_brands"]:
+            if sb in product_name:
+                vendor = catalog["vendor_by_sub_brand"].get(sb)
+                if vendor:
+                    return {"vendor": vendor, "managed_name": None, "unit_cost": None, "sub_brand": sb}
+                return None
+        return None
+    return None
 
 
 def lookup_vendor(brand, product_name, option):
@@ -102,20 +134,18 @@ def lookup_vendor(brand, product_name, option):
     재고 우선 배정은 원본 주문 상품명(마켓 리스팅 제목이라 수식어가 많이 붙음)뿐
     아니라, 카탈로그 매칭에 성공했을 때의 관리상품명(더 깔끔한 이름이라 매칭이
     잘 됨)에 대해서도 확인한다 — 둘 중 하나라도 재고 목록과 매칭되면 그 3PL로
-    무조건 배정한다.
+    무조건 배정한다. 1순위 카탈로그에서 못 찾으면(fallback_catalog_type이 설정된
+    브랜드는) 2순위 카탈로그로 넘어간다(예: MSNA 정확 매치표 -> 하위 브랜드 매칭).
     """
     if not brand or not product_name:
         return None
 
-    kind, catalog = _get_catalog(brand) or (None, None)
+    kind, catalog, fallback = _get_catalog(brand) or (None, None, None)
 
-    entry = None
-    if kind == "jm_exact":
-        entry = catalog["by_name_option"].get((product_name, option or ""))
-        if not entry:
-            vendors = catalog["by_name_vendors"].get(product_name)
-            if vendors and len(vendors) == 1:
-                entry = {"vendor": next(iter(vendors)), "managed_name": None, "unit_cost": None}
+    entry = _lookup_in(kind, catalog, product_name, option)
+    if not entry and fallback:
+        fb_kind, fb_catalog = fallback
+        entry = _lookup_in(fb_kind, fb_catalog, product_name, option)
 
     stock_vendor = _stock_override_vendor(brand, product_name)
     if not stock_vendor and entry and entry.get("managed_name"):
@@ -127,16 +157,4 @@ def lookup_vendor(brand, product_name, option):
             "unit_cost": entry["unit_cost"] if entry else None,
         }
 
-    if kind == "jm_exact":
-        if not entry:
-            return None
-        return {"vendor": entry["vendor"], "managed_name": entry["managed_name"], "unit_cost": entry["unit_cost"]}
-    if kind == "msna_subbrand":
-        for sb in catalog["sub_brands"]:
-            if sb in product_name:
-                vendor = catalog["vendor_by_sub_brand"].get(sb)
-                if vendor:
-                    return {"vendor": vendor, "managed_name": None, "unit_cost": None, "sub_brand": sb}
-                return None
-        return None
-    return None
+    return entry

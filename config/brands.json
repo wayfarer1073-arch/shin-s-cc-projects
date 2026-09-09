@@ -9,7 +9,10 @@
     "MSNA": {
       "label": "MSNA (엠에스앤에이)",
       "catalog_file": "data/reference/catalog_MSNA.json",
-      "catalog_type": "msna_subbrand"
+      "catalog_type": "jm_exact",
+      "fallback_catalog_type": "msna_subbrand",
+      "fallback_catalog_file": "data/reference/catalog_MSNA_subbrand.json",
+      "_note": "정리본 'MSNA 관리상품' 시트(주문상품명+옵션 정확 매치, 43건)를 1순위로 쓰고, 못 찾으면 예전 방식(하위 브랜드명이 상품명에 포함되는지, '브랜드별 배송비 정책' 기준)으로 폴백한다."
     },
     "MH": {
       "label": "MH",
