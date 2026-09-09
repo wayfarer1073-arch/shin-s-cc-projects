@@ -220,27 +220,36 @@ def _load_option_canon_table(vendor_name, cfg):
 
 # ---------------------------------------------------------------------------
 # 수량 재산출 (가공 지침 1번): 정식 옵션 목록의 각 항목은 "낱개 단위" 하나를
-# 뜻한다. 주문 원문이 그 단위의 배수를 담고 있으면("총 120포"처럼 명시하거나
-# "60포+60포"처럼 단위를 반복 표기) 옵션은 그 낱개 옵션명으로, 판매수량은
-# 배수만큼으로 재계산한다. 배수를 확신할 수 없으면(설명이 명시적이지 않으면)
-# 건드리지 않는다 — 틀리게 추측하는 것보다 원문 그대로 두는 게 안전하다.
+# 뜻한다. 판매수량은 항상 "원본 수량 × 상품명/옵션에 명시된 배수"로 계산한다
+# (원본 수량을 버리고 배수로 대체하는 게 아니라 곱한다). 배수 근거는 우선순위
+# 순으로 셋:
+#   1) "총 N단위" — 정식 옵션명 자체의 단위(예: "60포")를 기준으로 원문에
+#      "총 120포"처럼 명시된 경우, 120//60=2배. 정식 옵션 매칭에 성공했을 때만
+#      판단 가능(그 옵션의 고유 단위를 알아야 나눌 수 있으므로).
+#   2) "(N박스)"/"(N세트)"/"(N팩)" — 괄호로 묶은 판매 단위 수. 상품명에 낱개
+#      수("70g x 16개")가 같이 적혀 있어도 실제 판매 단위는 이 괄호 표기이므로
+#      더 우선한다. 정식 옵션 매칭 여부와 무관하게(카탈로그에 없는 상품이라도)
+#      원문에서 바로 판단할 수 있다.
+#   3) "옵션 자체 수량 없이 그냥 x N개" — "아마드티 얼그레이 20티백x6개"처럼
+#      옵션명("20티백")에는 개수가 없고 상품명에 "xN개"만 곱셈으로 붙은 경우.
+#      정식 옵션 매칭 여부와 무관하게 원문에서 판단한다. "한입 허니 꽈배기
+#      520gx3개"(옵션 "520g 3개")처럼 옵션 자체에 이미 그 수량이 포함된
+#      것처럼 보여도, 상품명 쪽의 "x3개"는 여전히 "그 옵션을 3개 산다"는
+#      뜻이므로 곱한다 — "3개"가 옵션명과 겹친다고 배수를 무시하지 않는다.
+# 위 셋 중 어느 것도 명시적으로 없으면 배수 1(=원본 수량 그대로)로 본다.
 # ---------------------------------------------------------------------------
 _UNIT_TOKEN_RE = re.compile(r'^(\d+)([가-힣a-zA-Z]+)$')
 _TOTAL_RE = re.compile(r'총\s*(\d+)\s*([가-힣a-zA-Z]+)')
+_BOX_TOTAL_RE = re.compile(r'\((\d+)\s*(?:박스|세트|팩)\)')
+_X_COUNT_RE = re.compile(r'[xX×]\s*(\d+)\s*개')
 
 
 def _detect_multiplier(matched_tokens, raw_text):
     """matched_tokens: 정식 옵션명에서 뽑은 필수 토큰 집합(그중 "60포"처럼
     숫자+단위인 것만 배수 판단에 쓴다). raw_text: 원본 상품명+옵션 원문(공백
     유지). "총 N단위"처럼 명시적인 근거가 있을 때만 배수를 반환한다 — 그 외에는
-    1(=재계산 안 함)을 반환한다.
-
-    같은 숫자+단위 토큰이 원문에 반복 등장하는 것만으로는 배수로 보지 않는다:
-    실제로 상품명과 옵션 필드가 같은 용량을 서로 다시 언급하는 경우가 흔해서
-    (예: "한입 허니 꽈배기 520gx3개" | 옵션 "520g 3개" — "520g"이 두 번 나오지만
-    이건 520g 한 봉지를 3개 산다는 뜻이지 "520g짜리 두 묶음"이 아니다), 반복
-    횟수만으로 배수를 추정하면 오히려 틀린 값을 만든다. 명시적 "총 N"이 없으면
-    틀리게 추측하는 것보다 원문 그대로 두는 게 안전하다."""
+    1을 반환하고(=재계산 안 함), 호출부에서 _detect_general_multiplier로
+    이어서 판단한다."""
     unit_tokens = []
     for tok in matched_tokens:
         m = _UNIT_TOKEN_RE.match(tok)
@@ -257,6 +266,23 @@ def _detect_multiplier(matched_tokens, raw_text):
                 if mult >= 1:
                     return mult
 
+    return 1
+
+
+def _detect_general_multiplier(raw_text):
+    """정식 옵션 매칭 성공 여부와 무관하게 원문 자체만으로 판단 가능한 배수
+    (위 우선순위 2, 3번). 괄호 묶음 수를 먼저 보고, 없으면 "xN개" 곱셈 표기를
+    본다."""
+    m = _BOX_TOTAL_RE.search(raw_text)
+    if m:
+        mult = int(m.group(1))
+        if mult >= 1:
+            return mult
+    m = _X_COUNT_RE.search(raw_text)
+    if m:
+        mult = int(m.group(1))
+        if mult >= 1:
+            return mult
     return 1
 
 
@@ -310,23 +336,32 @@ def _expand_multi_select(vendor_name, cfg, rec):
 
 def _apply_option_recalc(vendor_name, cfg, rec):
     """옵션 정규화 + 필요 시 수량 재산출을 반영한 새 rec를 반환한다(원본은
-    건드리지 않음). 매칭이 없으면 원본 rec를 그대로 반환한다."""
+    건드리지 않음). 정식 옵션 매칭에 성공하면 옵션명을 그걸로 바꾸고 "총 N"
+    배수까지 확인한다. 매칭에 실패해도(카탈로그에 없는 상품이라도) 원문에
+    괄호 묶음 수나 "xN개" 표기가 있으면 배수만 반영한다(옵션명은 원본 그대로
+    둔다) — 예: "추억의 도나스 70g x 16개 (2박스)"는 정식 옵션 목록에 없지만
+    "(2박스)"는 그대로 판단 가능하다."""
     table = _load_option_canon_table(vendor_name, cfg)
     if not table:
         return rec
     text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
     if not text.strip():
         return rec
-    result = _best_token_match_with_tokens(text, table)
-    if not result:
-        return rec
-    tokens, matched_option = result
-    multiplier = _detect_multiplier(tokens, text)
 
     new_rec = dict(rec)
-    new_rec["option"] = matched_option
+    result = _best_token_match_with_tokens(text, table)
+    multiplier = 1
+    if result:
+        tokens, matched_option = result
+        new_rec["option"] = matched_option
+        multiplier = _detect_multiplier(tokens, text)
+
+    if multiplier == 1:
+        multiplier = _detect_general_multiplier(text)
+
     if multiplier > 1:
         new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
+
     return new_rec
 
 
