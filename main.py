@@ -42,24 +42,34 @@ def run(input_paths, out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     run_date = date.today().isoformat()
+    run_date_compact = run_date.replace("-", "")
 
     written = []
     highlight_totals = {"quantity": 0, "duplicate_address": 0, "both": 0}
     for vendor, rows in by_vendor.items():
-        out_path = out_dir / f"{vendor}_{run_date}.xlsx"
-        _, highlight_counts = write_vendor_file(vendor, rows, out_path)
-        written.append(out_path)
-        for k, v in highlight_counts.items():
-            highlight_totals[k] += v
-        marks = []
-        if highlight_counts["quantity"]:
-            marks.append(f"수량다수 {highlight_counts['quantity']}건")
-        if highlight_counts["duplicate_address"]:
-            marks.append(f"동일수령인·주소 {highlight_counts['duplicate_address']}건")
-        if highlight_counts["both"]:
-            marks.append(f"둘다 해당 {highlight_counts['both']}건")
-        mark_note = f" ({', '.join(marks)} 강조표시)" if marks else ""
-        print(f"[작성] {vendor}: {len(rows)}건 -> {out_path}{mark_note}")
+        # 브랜드별로 나눠서 각각 별도 파일로 작성한다 — 파일명 규칙(가공 지침 8번)이
+        # "{YYYYMMDD}_{협력사}_{사업부(MH/JM/MSNA)}"라 한 협력사가 여러 브랜드
+        # 주문을 같이 처리하는 경우(예: 이플코리아) 브랜드마다 파일을 분리해야 한다.
+        # 브랜드 표기가 없는 주문(과거 파일명 규칙 이전의 JM 전용 협력사)은 JM으로 간주.
+        by_brand = {}
+        for rec in rows:
+            by_brand.setdefault(rec.get("brand") or "JM", []).append(rec)
+
+        for brand, brand_rows in by_brand.items():
+            out_path = out_dir / f"{run_date_compact}_{vendor}_{brand}.xlsx"
+            _, highlight_counts = write_vendor_file(vendor, brand_rows, out_path)
+            written.append(out_path)
+            for k, v in highlight_counts.items():
+                highlight_totals[k] += v
+            marks = []
+            if highlight_counts["quantity"]:
+                marks.append(f"수량다수 {highlight_counts['quantity']}건")
+            if highlight_counts["duplicate_address"]:
+                marks.append(f"동일수령인·주소 {highlight_counts['duplicate_address']}건")
+            if highlight_counts["both"]:
+                marks.append(f"둘다 해당 {highlight_counts['both']}건")
+            mark_note = f" ({', '.join(marks)} 강조표시)" if marks else ""
+            print(f"[작성] {vendor} ({brand}): {len(brand_rows)}건 -> {out_path}{mark_note}")
 
     review_path = None
     if unclassified or ambiguous:

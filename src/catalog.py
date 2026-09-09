@@ -5,10 +5,11 @@
   classify.py는 기존 브랜드 키워드 매칭으로 넘어간다.
 - MSNA: 하위 브랜드명이 상품명에 포함되는지로 찾는다 (하위 브랜드 -> 배송처 매핑은
   '브랜드별 배송비 정책' 시트 기준이라 일부 하위 브랜드는 배송처가 아직 없음).
-- 재고 기반 우선 배정(stock_override): 브랜드에 stock_override_file이 설정되어 있으면,
-  카탈로그 조회보다 먼저 확인한다. 3PL 업체가 실제 보관 중인 재고 목록에 해당 상품이
-  있으면 카탈로그의 과거 배송처 값과 무관하게 그 3PL 업체로 무조건 분류한다
-  (사용자가 명시적으로 지정한 우선순위 규칙).
+- 이플코리아 전역 우선 배정: "주문서 가공 지침" 4번("이플코리아_MH에서 확인할 수 있는
+  상품들은 브랜드 구분 없이 모두 이플코리아 상품으로 분류")에 따라, 브랜드와 무관하게
+  data/reference/options_이플코리아.json(이플코리아 3PL 실보관 재고 + 정식 옵션명
+  목록)에 있는 상품은 카탈로그의 과거 배송처 값과 무관하게 무조건 이플코리아로
+  분류한다. 브랜드별 카탈로그 조회보다 먼저 확인한다.
 """
 import json
 import re
@@ -20,9 +21,11 @@ with open(BASE_DIR / "config" / "brands.json", encoding="utf-8") as f:
     _BRANDS_CFG = json.load(f)["brands"]
 
 _loaded = {}
-_stock_loaded = {}
 
-_STOCK_MATCH_MIN_LEN = 8  # 정규화한 이름이 이보다 짧으면 오탐 위험이 커서 매칭에서 제외
+_MATCH_MIN_LEN = 8  # 정규화한 이름이 이보다 짧으면 오탐 위험이 커서 매칭에서 제외
+_EP_KOREA_VENDOR = "이플코리아"
+_EP_KOREA_OPTIONS_FILE = "data/reference/options_이플코리아.json"
+_ep_korea_names = None
 
 
 def _normalize_name(s):
@@ -33,28 +36,23 @@ def _normalize_name(s):
     return s.strip()
 
 
-def _load_stock_override(brand):
-    cfg = _BRANDS_CFG.get(brand, {})
-    stock_file = cfg.get("stock_override_file")
-    if not stock_file:
-        return None
-    if brand not in _stock_loaded:
-        with open(BASE_DIR / stock_file, encoding="utf-8") as f:
+def _load_ep_korea_names():
+    global _ep_korea_names
+    if _ep_korea_names is None:
+        with open(BASE_DIR / _EP_KOREA_OPTIONS_FILE, encoding="utf-8") as f:
             items = json.load(f)
-        names = [_normalize_name(it["product_name"]) for it in items]
-        names = [n for n in names if len(n) >= _STOCK_MATCH_MIN_LEN]
-        _stock_loaded[brand] = {"names": names, "vendor": cfg["stock_override_vendor"]}
-    return _stock_loaded[brand]
+        names = [_normalize_name(it) for it in items]
+        _ep_korea_names = [n for n in names if len(n) >= _MATCH_MIN_LEN]
+    return _ep_korea_names
 
 
-def _stock_override_vendor(brand, product_name):
-    stock = _load_stock_override(brand)
-    if not stock or not product_name:
+def _ep_korea_override_vendor(product_name):
+    if not product_name:
         return None
     norm_product = _normalize_name(product_name)
-    for stock_name in stock["names"]:
-        if stock_name in norm_product:
-            return stock["vendor"]
+    for name in _load_ep_korea_names():
+        if name in norm_product:
+            return _EP_KOREA_VENDOR
     return None
 
 
@@ -137,7 +135,15 @@ def lookup_vendor(brand, product_name, option):
     무조건 배정한다. 1순위 카탈로그에서 못 찾으면(fallback_catalog_type이 설정된
     브랜드는) 2순위 카탈로그로 넘어간다(예: MSNA 정확 매치표 -> 하위 브랜드 매칭).
     """
-    if not brand or not product_name:
+    if not product_name:
+        return None
+
+    # 이플코리아 전역 우선 배정은 브랜드 구분 없이 가장 먼저 확인한다.
+    direct_override = _ep_korea_override_vendor(product_name)
+    if direct_override:
+        return {"vendor": direct_override, "managed_name": None, "unit_cost": None}
+
+    if not brand:
         return None
 
     kind, catalog, fallback = _get_catalog(brand) or (None, None, None)
@@ -147,12 +153,12 @@ def lookup_vendor(brand, product_name, option):
         fb_kind, fb_catalog = fallback
         entry = _lookup_in(fb_kind, fb_catalog, product_name, option)
 
-    stock_vendor = _stock_override_vendor(brand, product_name)
-    if not stock_vendor and entry and entry.get("managed_name"):
-        stock_vendor = _stock_override_vendor(brand, entry["managed_name"])
-    if stock_vendor:
+    override_vendor = _ep_korea_override_vendor(product_name)
+    if not override_vendor and entry and entry.get("managed_name"):
+        override_vendor = _ep_korea_override_vendor(entry["managed_name"])
+    if override_vendor:
         return {
-            "vendor": stock_vendor,
+            "vendor": override_vendor,
             "managed_name": entry["managed_name"] if entry else None,
             "unit_cost": entry["unit_cost"] if entry else None,
         }

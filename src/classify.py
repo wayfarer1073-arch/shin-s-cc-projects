@@ -16,14 +16,13 @@ def classify_vendor(rec, vendors_cfg):
     "_catalog_vendor_unregistered"를 표시해두고 미분류로 취급한다.
     """
     brand = rec.get("brand")
-    if brand:
-        hit = lookup_vendor(brand, rec.get("product_name", ""), rec.get("option", ""))
-        if hit:
-            vendor = hit["vendor"]
-            if vendor in vendors_cfg:
-                return [vendor]
-            rec["_catalog_vendor_unregistered"] = vendor
-            return []
+    hit = lookup_vendor(brand, rec.get("product_name", ""), rec.get("option", ""))
+    if hit:
+        vendor = hit["vendor"]
+        if vendor in vendors_cfg:
+            return [vendor]
+        rec["_catalog_vendor_unregistered"] = vendor
+        return []
 
     text = f"{rec.get('product_name', '')} {rec.get('option', '')}"
     matches = []
