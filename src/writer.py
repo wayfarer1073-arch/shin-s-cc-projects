@@ -260,6 +260,54 @@ def _detect_multiplier(matched_tokens, raw_text):
     return 1
 
 
+# ---------------------------------------------------------------------------
+# 다중 선택 행 분리 (가공 지침 2번): 고객이 "(택N)"으로 서로 다른 옵션 N개를
+# 선택하면, 원본 옵션 필드에 그 N개 선택 내역이 구분자(콤마/슬래시/"선택N:"
+# 표기 등)로 나뉘어 실제로 들어있다. 그 구분된 항목들이 각각 정식 옵션
+# 목록과 confident하게 매칭되고 서로 다른 항목이면, 그 개수만큼 행을 나눈다.
+# 구분한 항목 중 하나라도 매칭이 안 되거나 같은 옵션으로 겹치면(=진짜 여러
+# 선택인지 확신할 수 없으면) 나누지 않고 원본 그대로 둔다.
+# ---------------------------------------------------------------------------
+_OPTION_SEGMENT_RE = re.compile(r'선택\s*\d*\s*[:.]|[,/\n]')
+
+
+def _split_option_segments(option_text):
+    if not option_text:
+        return []
+    parts = _OPTION_SEGMENT_RE.split(option_text)
+    return [p.strip() for p in parts if p and p.strip()]
+
+
+def _expand_multi_select(vendor_name, cfg, rec):
+    """옵션 필드가 서로 다른 정식 옵션 2개 이상을 담고 있으면 그만큼 행을
+    나눠 반환한다(각 행은 낱개 1개씩으로 본다 — "총 수량"이 아니라 "고객이
+    고른 서로 다른 항목의 개수"이므로). 분리 대상이 아니거나 애매하면
+    [rec] 그대로(리스트 하나) 반환한다."""
+    table = _load_option_canon_table(vendor_name, cfg)
+    if not table:
+        return [rec]
+    segments = _split_option_segments(rec.get("option"))
+    if len(segments) < 2:
+        return [rec]
+
+    matched = []
+    for seg in segments:
+        result = _best_token_match_with_tokens(seg, table)
+        if not result:
+            return [rec]
+        matched.append(result[1])
+    if len(set(matched)) != len(matched):
+        return [rec]
+
+    out = []
+    for opt in matched:
+        new_rec = dict(rec)
+        new_rec["option"] = opt
+        new_rec["quantity"] = 1
+        out.append(new_rec)
+    return out
+
+
 def _apply_option_recalc(vendor_name, cfg, rec):
     """옵션 정규화 + 필요 시 수량 재산출을 반영한 새 rec를 반환한다(원본은
     건드리지 않음). 매칭이 없으면 원본 rec를 그대로 반환한다."""
@@ -364,21 +412,27 @@ def write_vendor_file(vendor_name, rows, out_path):
     data_start = cfg["data_start_row"]
     styles = _capture_row_style(ws, data_start, ws.max_column)
 
-    dup_counts = Counter(k for k in (_dup_key(r) for r in rows) if k is not None)
+    # 옵션 정규화·수량 재산출(1번)/다중 선택 행 분리(2번) 지침 반영: 먼저 한 줄이
+    # 서로 다른 정식 옵션 여러 개로 쪼개져야 하는지 보고(분리되면 그걸로 확정),
+    # 분리 대상이 아니면 같은 옵션의 배수인지(수량 재산출)만 확인한다.
+    expanded_rows = []
+    for rec in rows:
+        split_recs = _expand_multi_select(vendor_name, cfg, rec)
+        if len(split_recs) > 1:
+            expanded_rows.extend(split_recs)
+        else:
+            expanded_rows.append(_apply_option_recalc(vendor_name, cfg, split_recs[0]))
+
+    dup_counts = Counter(k for k in (_dup_key(r) for r in expanded_rows) if k is not None)
     highlight_counts = {"quantity": 0, "duplicate_address": 0, "both": 0}
 
     seen_orders = set()
-    for i, rec in enumerate(rows):
+    for i, rec in enumerate(expanded_rows):
         r = data_start + i
         order_id = rec.get("order_id")
         is_first = order_id not in seen_orders if order_id is not None else True
         if order_id is not None:
             seen_orders.add(order_id)
-
-        # 옵션 정규화 + 수량 재산출 (가공 지침 1번): 정식 옵션 목록과 매칭되면
-        # 옵션을 정식 표기로 바꾸고, 원문이 그 단위의 배수를 담고 있으면 판매수량도
-        # 재계산한다. 이후 컬럼 채우기·강조표시 모두 이 보정된 값을 기준으로 한다.
-        rec = _apply_option_recalc(vendor_name, cfg, rec)
 
         for c, spec in col_map.items():
             value = _cell_value_for(spec, rec, i + 1, is_first, vendor_name, cfg)
