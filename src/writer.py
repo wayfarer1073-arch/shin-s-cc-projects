@@ -42,7 +42,6 @@ def _build_col_map(ws, cfg):
     combine_field = cfg.get("combine_product_option_field")
     code_column = cfg.get("code_column")
     name_pair_columns = cfg.get("name_pair_columns", {})
-    option_canon_file = cfg.get("option_canon_file")
 
     col_map = {}
     for c in range(1, ws.max_column + 1):
@@ -61,9 +60,6 @@ def _build_col_map(ws, cfg):
             col_map[c] = ("code",)
         elif header in name_pair_columns:
             col_map[c] = ("name_pair", name_pair_columns[header])
-        elif option_canon_file and (header in field_overrides and field_overrides[header] == "option"
-                                     or header in _HEADER_TO_FIELD and _HEADER_TO_FIELD[header] == "option"):
-            col_map[c] = ("canon_option",)
         elif header in field_overrides:
             col_map[c] = ("field", field_overrides[header])
         elif header in _NO_HEADERS:
@@ -149,17 +145,23 @@ def _tokenize(s):
     return {t for t in _TOKEN_RE.findall(s) if not t.isdigit()}
 
 
-def _best_token_match(text, candidates):
+def _best_token_match_with_tokens(text, candidates):
     """candidates: [(tokens, payload), ...]. 필수 토큰이 전부 text에 있는 후보 중
-    가장 구체적인(토큰 글자수 합이 큰) 것의 payload를 반환. 없으면 None.
-    candidates는 미리 구체적인 순서로 정렬돼 있어야 한다. 공백 차이로 매칭이
-    실패하지 않도록 text에서 공백을 제거하고 비교한다(토큰 쪽은 애초에 정규식이
-    공백을 넘어가지 않아 공백이 섞이지 않는다)."""
-    text = re.sub(r'\s+', '', text)
+    가장 구체적인(토큰 글자수 합이 큰) 것의 (tokens, payload)를 반환. 없으면 None.
+    candidates는 미리 구체적인 순서로 정렬돼 있어야 한다. 공백·기호 차이로
+    매칭이 실패하지 않도록("배&도라지" vs "배도라지") text에서 공백과 흔한
+    연결기호를 제거하고 비교한다(토큰 쪽은 애초에 정규식이 그런 문자를 건너뛰어
+    섞이지 않는다)."""
+    text = re.sub(r'[\s&+/,.\-_★]+', '', text)
     for tokens, payload in candidates:
         if all(tok in text for tok in tokens):
-            return payload
+            return tokens, payload
     return None
+
+
+def _best_token_match(text, candidates):
+    result = _best_token_match_with_tokens(text, candidates)
+    return result[1] if result else None
 
 
 def _load_name_pair_table(vendor_name, cfg):
@@ -216,15 +218,68 @@ def _load_option_canon_table(vendor_name, cfg):
     return _option_canon_tables[vendor_name]
 
 
-def _canon_option_for(vendor_name, cfg, rec):
+# ---------------------------------------------------------------------------
+# 수량 재산출 (가공 지침 1번): 정식 옵션 목록의 각 항목은 "낱개 단위" 하나를
+# 뜻한다. 주문 원문이 그 단위의 배수를 담고 있으면("총 120포"처럼 명시하거나
+# "60포+60포"처럼 단위를 반복 표기) 옵션은 그 낱개 옵션명으로, 판매수량은
+# 배수만큼으로 재계산한다. 배수를 확신할 수 없으면(설명이 명시적이지 않으면)
+# 건드리지 않는다 — 틀리게 추측하는 것보다 원문 그대로 두는 게 안전하다.
+# ---------------------------------------------------------------------------
+_UNIT_TOKEN_RE = re.compile(r'^(\d+)([가-힣a-zA-Z]+)$')
+_TOTAL_RE = re.compile(r'총\s*(\d+)\s*([가-힣a-zA-Z]+)')
+
+
+def _detect_multiplier(matched_tokens, raw_text):
+    """matched_tokens: 정식 옵션명에서 뽑은 필수 토큰 집합(그중 "60포"처럼
+    숫자+단위인 것만 배수 판단에 쓴다). raw_text: 원본 상품명+옵션 원문(공백
+    유지). "총 N단위"처럼 명시적인 근거가 있을 때만 배수를 반환한다 — 그 외에는
+    1(=재계산 안 함)을 반환한다.
+
+    같은 숫자+단위 토큰이 원문에 반복 등장하는 것만으로는 배수로 보지 않는다:
+    실제로 상품명과 옵션 필드가 같은 용량을 서로 다시 언급하는 경우가 흔해서
+    (예: "한입 허니 꽈배기 520gx3개" | 옵션 "520g 3개" — "520g"이 두 번 나오지만
+    이건 520g 한 봉지를 3개 산다는 뜻이지 "520g짜리 두 묶음"이 아니다), 반복
+    횟수만으로 배수를 추정하면 오히려 틀린 값을 만든다. 명시적 "총 N"이 없으면
+    틀리게 추측하는 것보다 원문 그대로 두는 게 안전하다."""
+    unit_tokens = []
+    for tok in matched_tokens:
+        m = _UNIT_TOKEN_RE.match(tok)
+        if m:
+            unit_tokens.append((int(m.group(1)), m.group(2)))
+    if not unit_tokens:
+        return 1
+
+    for total_str, unit in _TOTAL_RE.findall(raw_text):
+        total = int(total_str)
+        for base, base_unit in unit_tokens:
+            if base_unit == unit and base and total % base == 0:
+                mult = total // base
+                if mult >= 1:
+                    return mult
+
+    return 1
+
+
+def _apply_option_recalc(vendor_name, cfg, rec):
+    """옵션 정규화 + 필요 시 수량 재산출을 반영한 새 rec를 반환한다(원본은
+    건드리지 않음). 매칭이 없으면 원본 rec를 그대로 반환한다."""
     table = _load_option_canon_table(vendor_name, cfg)
     if not table:
-        return rec.get("option") or None
+        return rec
     text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
     if not text.strip():
-        return rec.get("option") or None
-    match = _best_token_match(text, table)
-    return match if match else (rec.get("option") or None)
+        return rec
+    result = _best_token_match_with_tokens(text, table)
+    if not result:
+        return rec
+    tokens, matched_option = result
+    multiplier = _detect_multiplier(tokens, text)
+
+    new_rec = dict(rec)
+    new_rec["option"] = matched_option
+    if multiplier > 1:
+        new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
+    return new_rec
 
 
 def _capture_row_style(ws, row_idx, max_col):
@@ -267,8 +322,6 @@ def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cf
         if match:
             return match[kind_spec[1]]
         return rec.get("product_name") or None
-    if kind == "canon_option":
-        return _canon_option_for(vendor_name, cfg, rec)
     return None
 
 
@@ -321,6 +374,11 @@ def write_vendor_file(vendor_name, rows, out_path):
         is_first = order_id not in seen_orders if order_id is not None else True
         if order_id is not None:
             seen_orders.add(order_id)
+
+        # 옵션 정규화 + 수량 재산출 (가공 지침 1번): 정식 옵션 목록과 매칭되면
+        # 옵션을 정식 표기로 바꾸고, 원문이 그 단위의 배수를 담고 있으면 판매수량도
+        # 재계산한다. 이후 컬럼 채우기·강조표시 모두 이 보정된 값을 기준으로 한다.
+        rec = _apply_option_recalc(vendor_name, cfg, rec)
 
         for c, spec in col_map.items():
             value = _cell_value_for(spec, rec, i + 1, is_first, vendor_name, cfg)
