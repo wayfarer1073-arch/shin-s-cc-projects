@@ -83,7 +83,8 @@
       "field_overrides": {
         "주문자명": "receiver_name"
       },
-      "_needs_confirmation": "샘플 5건에서만 뽑은 브랜드라 목록이 매우 불완전함. 안국약품이 취급하는 전체 상품/브랜드 목록을 받아서 교체 필요."
+      "_needs_confirmation": "샘플 5건에서만 뽑은 브랜드라 목록이 매우 불완전함. 안국약품이 취급하는 전체 상품/브랜드 목록을 받아서 교체 필요.",
+      "option_canon_file": "data/reference/options_안국약품.json"
     },
     "마더네스트": {
       "brand_keywords": [
@@ -101,7 +102,8 @@
       "title_row": 1,
       "summary_row": 2,
       "header_row": 3,
-      "data_start_row": 4
+      "data_start_row": 4,
+      "option_canon_file": "data/reference/options_굿즈코리아.json"
     },
     "먹다": {
       "brand_keywords": [],
@@ -374,7 +376,8 @@
       "template_file": "templates/투데이넛.xlsx",
       "template_family": "flat_generic",
       "header_row": 1,
-      "data_start_row": 2
+      "data_start_row": 2,
+      "option_canon_file": "data/reference/options_투데이넛.json"
     },
     "페를레디솔레": {
       "brand_keywords": [],
