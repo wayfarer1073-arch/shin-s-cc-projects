@@ -228,6 +228,34 @@ def _best_validated_match(text, candidates, identity_tokens):
     return _tiebreak(text, tied) if tied else None
 
 
+def _best_relaxed_match(text, candidates, identity_tokens):
+    """_best_validated_match까지도 실패했을 때 마지막으로 시도하는 매칭.
+    지금까지는 "후보의 모든 필수 토큰이 원문에 들어있어야" 인정했는데,
+    반대로 고객이 실제로 적은 식별 단어(identity_tokens)가 후보 이름
+    "안에" 포함돼 있는지만 본다 — 후보 쪽에 고객이 안 적은 브랜드/설명이
+    더 붙어 있어도 상관없다(예: 원문 "모로오렌지"가 후보명 "모로오렌지
+    캔디"의 부분 문자열이면 인정, 원문 "포켓몬"+"캔디머신"이 후보명 "포켓몬
+    캔디머신 아이알파캔디"에 다 포함돼 있으면 원문에 없는 "아이알파캔디"는
+    무시하고 인정). 사이즈(숫자+단위) 토큰만은 후보 쪽에도 정확히 있어야
+    한다(200g짜리를 300g 후보로 착각하면 안 되므로). 이 조건을 만족하는
+    후보가 정확히 하나뿐일 때만 인정한다 — 둘 이상이면 어느 쪽인지 구분이
+    안 되는 것이므로 아무것도 고르지 않고 사람이 확인하게 한다."""
+    if not identity_tokens:
+        return None
+    size_tokens = {t for t in _tokenize(text) if t[0].isdigit()}
+    matched = []
+    for tokens, payload in candidates:
+        if not all(any(idt in ct for ct in tokens) for idt in identity_tokens):
+            continue
+        cand_size_tokens = {t for t in tokens if t[0].isdigit()}
+        if size_tokens and cand_size_tokens and not (size_tokens & cand_size_tokens):
+            continue
+        matched.append((tokens, payload))
+    if len(matched) == 1:
+        return matched[0]
+    return None
+
+
 def _load_name_pair_table(vendor_name, cfg):
     if vendor_name not in _name_pair_tables:
         pair_file = cfg.get("name_pair_lookup_file")
@@ -557,7 +585,7 @@ def _expand_multi_select(vendor_name, cfg, rec):
     return out
 
 
-_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션", "원통"}
+_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션", "원통", "랜덤발송"}
 
 
 def _find_option_match(table, option_text, combined_text):
@@ -575,6 +603,9 @@ def _find_option_match(table, option_text, combined_text):
     candidate = _best_validated_match(combined_text, table, option_identity_tokens)
     if candidate:
         return candidate[0], candidate[1], combined_text
+    candidate = _best_relaxed_match(option_text, table, option_identity_tokens)
+    if candidate:
+        return candidate[0], candidate[1], option_text
     return None
 
 
