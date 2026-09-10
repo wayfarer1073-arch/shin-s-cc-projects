@@ -344,6 +344,33 @@ def _normalize_container_words(s):
     return _CONTAINER_UNIT_RE.sub(r'\g<1>세트', s)
 
 
+_STICK_COUNT_RE = re.compile(r'(\d+)스틱')
+
+
+def _normalize_stick_count(s):
+    """정식 옵션 목록은 낱개 수를 "15포"로 적지만, 원본 주문서는 상품명에
+    "10g*15스틱"처럼 "N스틱"으로 적는 경우가 있다(같은 낱개를 스틱형 포장
+    이라고 부른 것뿐, 카탈로그에 "N스틱" 표기 상품은 없다). "N스틱" ->
+    "N포"로 통일해서 비교한다."""
+    return _STICK_COUNT_RE.sub(r'\1포', s)
+
+
+_REDUNDANT_TRAILING_CONTAINER_RE = re.compile(
+    r'([xX×]\s*\d+\s*(?:개(?!입)|세트|박스|팩))\s*(?:세트|박스|팩)'
+)
+
+
+def _strip_redundant_trailing_container(s):
+    """"30포×2개 세트"처럼 "×N개"로 이미 배수를 밝힌 뒤에 "세트"/"박스"/
+    "팩" 같은 묶음 단어가 한 번 더 따라붙는 경우가 있다(같은 뜻의 중복
+    표현 — "2개짜리를 세트로 산다"는 말). 이 트레일링 단어까지 식별
+    단어로 요구하면, 정식 옵션 목록엔 낱개 기준 이름만 있고 "세트"라는
+    말이 안 붙어 있어서(예: "산골농장 하루한포 배도라지 스틱 30포")
+    매칭이 실패한다. 배수는 이미 "×N개"로 판단되므로 뒤따르는 중복
+    묶음 단어는 지운다."""
+    return _REDUNDANT_TRAILING_CONTAINER_RE.sub(r'\1', s)
+
+
 def _apply_option_synonyms(text, cfg):
     """원본 주문서 옵션이 줄임말/구어체로 오는 경우(예: "청포도"가 실제로는
     "청포도요거트" 맛을 가리키는데 정식 옵션 목록엔 "청포도"만 있는 맛은
@@ -370,6 +397,8 @@ def _normalize_for_match(text, cfg):
     text = _apply_option_synonyms(text, cfg)
     text = _normalize_container_words(text)
     text = _normalize_package_count(text)
+    text = _normalize_stick_count(text)
+    text = _strip_redundant_trailing_container(text)
     return text
 
 
@@ -383,8 +412,10 @@ def _load_option_canon_table(vendor_name, cfg):
                 entries = json.load(f)
             items = [
                 (
-                    _tokenize(_normalize_package_count(_normalize_container_words(
-                        _strip_redundant_one_multiplier(e)
+                    _tokenize(_strip_redundant_trailing_container(_normalize_stick_count(
+                        _normalize_package_count(_normalize_container_words(
+                            _strip_redundant_one_multiplier(e)
+                        ))
                     ))),
                     e,
                 )
@@ -677,6 +708,13 @@ def _match_plus_segments(table, cfg, product_name, segments, clean_others):
             return None
         tokens, matched_option, match_text = found
         multiplier = _multiplier_for_match(matched_option, tokens, match_text, seg_norm)
+        # "레몬 2개+오렌지 2개"처럼 세그먼트 자체에 "×" 없는 맨 "N개"로 그
+        # 조각의 개수가 적혀 있는 경우("×N개" 형태만 보는 _detect_general_
+        # multiplier로는 못 잡음) 그 조각의 판매수량으로 그대로 쓴다.
+        if multiplier == 1:
+            bare_count = _detect_bare_count(seg)
+            if bare_count:
+                multiplier = bare_count
         matched.append((matched_option, multiplier))
     return matched
 
