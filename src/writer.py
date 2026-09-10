@@ -136,7 +136,10 @@ def _code_for(vendor_name, cfg, rec):
 # 매치가 없으면 우리 쪽 상품명을 그대로 양쪽 컬럼에 채운다(공란보다는 낫다).
 # ---------------------------------------------------------------------------
 _name_pair_tables = {}
-_TOKEN_RE = re.compile(r'\d+[가-힣a-zA-Z]*|[가-힣]{2,}')
+# 'x'/'X'는 이 도메인에서 거의 항상 곱셈 기호("8개입x2박스")라, 단위 글자
+# 범위에서 빼서 토큰이 그 앞에서 끊기게 한다(안 그러면 "8개입x2박스"가
+# "8개입x"라는 뒤섞인 토큰이 돼 정식 옵션 목록의 "8입"과 매치가 안 된다).
+_TOKEN_RE = re.compile(r'\d+[가-힣a-wyzA-WYZ]*|[가-힣]{2,}')
 
 
 def _tokenize(s):
@@ -162,6 +165,21 @@ def _best_token_match_with_tokens(text, candidates):
 def _best_token_match(text, candidates):
     result = _best_token_match_with_tokens(text, candidates)
     return result[1] if result else None
+
+
+def _best_validated_match(text, candidates, identity_tokens):
+    """_best_token_match_with_tokens와 같지만, 후보의 필수 토큰이 text에
+    다 있다는 것뿐 아니라 identity_tokens(식별 단어 집합)가 그 후보의
+    토큰에 전부 포함되는지도 같이 확인해서, 그 조건까지 만족하는 첫 후보를
+    반환한다(둘 다 만족 못 하면 다음으로 구체적인 후보를 계속 시도한다 —
+    가장 구체적인 후보 하나만 보고 포기하면, 상품명에 여러 맛 이름이 같이
+    있는 경우 엉뚱한 맛으로 매칭된 걸 걸러내고도 실제로 맞는 다른 후보를
+    놓치게 된다)."""
+    text = re.sub(r'[\s&+/,.\-_★]+', '', text)
+    for tokens, payload in candidates:
+        if identity_tokens <= tokens and all(tok in text for tok in tokens):
+            return tokens, payload
+    return None
 
 
 def _load_name_pair_table(vendor_name, cfg):
@@ -213,6 +231,18 @@ def _strip_redundant_one_multiplier(s):
     return _REDUNDANT_ONE_RE.sub(r' \1', s)
 
 
+_PACKAGE_COUNT_RE = re.compile(r'(\d+)개입')
+
+
+def _normalize_package_count(s):
+    """정식 옵션 목록은 낱개 수를 "8입"으로 적지만, 원본 주문서는 "8개입"으로
+    오는 경우가 있다("오리지날 8개입x2박스"). 둘 다 "8조각 들어있음"이라는
+    같은 뜻이라 "N개입" -> "N입"로 통일해서 비교한다(배수 판단용 텍스트가
+    아니라 옵션 식별용 텍스트에만 적용 — "45개입"을 구매 배수로 보지 않는
+    _X_COUNT_RE의 제외 규칙과는 별개다)."""
+    return _PACKAGE_COUNT_RE.sub(r'\1입', s)
+
+
 _CONTAINER_UNIT_RE = re.compile(r'(\d)(박스|팩)')
 
 
@@ -245,6 +275,17 @@ def _apply_option_synonyms(text, cfg):
     return text
 
 
+def _normalize_for_match(text, cfg):
+    """옵션 매칭에 쓰이는 원문 텍스트에 적용하는 정규화를 한데 모은다(동의어
+    치환 -> 박스/팩/세트 통일 -> 개입/입 통일 순서). 정식 옵션 목록 쪽
+    토큰화(_load_option_canon_table)에도 같은 통일 규칙(×1 배수 제거 제외)이
+    적용돼 있어야 양쪽이 같은 기준으로 비교된다."""
+    text = _apply_option_synonyms(text, cfg)
+    text = _normalize_container_words(text)
+    text = _normalize_package_count(text)
+    return text
+
+
 def _load_option_canon_table(vendor_name, cfg):
     if vendor_name not in _option_canon_tables:
         opt_file = cfg.get("option_canon_file")
@@ -254,7 +295,12 @@ def _load_option_canon_table(vendor_name, cfg):
             with open(BASE_DIR / opt_file, encoding="utf-8") as f:
                 entries = json.load(f)
             items = [
-                (_tokenize(_normalize_container_words(_strip_redundant_one_multiplier(e))), e)
+                (
+                    _tokenize(_normalize_package_count(_normalize_container_words(
+                        _strip_redundant_one_multiplier(e)
+                    ))),
+                    e,
+                )
                 for e in entries
             ]
             items = [(t, e) for t, e in items if t]
@@ -406,6 +452,91 @@ def _expand_multi_select(vendor_name, cfg, rec):
 _OPTION_BOILERPLATE_TOKENS = {"선택", "옵션"}
 
 
+def _find_option_match(table, option_text, combined_text):
+    """옵션 텍스트만으로 먼저 매칭을 시도하고, 못 찾으면 상품명을 더한 전체
+    텍스트로 넘어간다(식별 단어 검증 포함) — _apply_option_recalc와
+    _expand_plus_combo가 공유하는 매칭 로직. 매칭되면 (tokens, matched_option,
+    실제 매칭에 쓰인 텍스트)를, 못 찾으면 None을 반환한다."""
+    result = _best_token_match_with_tokens(option_text, table) if option_text else None
+    if result:
+        return result[0], result[1], option_text
+    option_identity_tokens = {
+        t for t in _tokenize(option_text)
+        if not t[0].isdigit() and t not in _OPTION_BOILERPLATE_TOKENS
+    }
+    candidate = _best_validated_match(combined_text, table, option_identity_tokens)
+    if candidate:
+        return candidate[0], candidate[1], combined_text
+    return None
+
+
+def _multiplier_for_match(matched_option, tokens, match_text, general_text):
+    """정식 옵션 매칭에 성공했을 때의 배수를 판단한다(옵션 자체에 이미
+    배수가 포함돼 있으면 1, 아니면 "총 N" -> 일반 배수 순으로 확인)."""
+    if _has_embedded_multiplier(matched_option):
+        return 1
+    multiplier = _detect_multiplier(tokens, match_text)
+    if multiplier == 1:
+        multiplier = _detect_general_multiplier(general_text)
+    return multiplier
+
+
+def _expand_plus_combo(vendor_name, cfg, rec):
+    """"+"로 여러 항목이 묶인 옵션을 처리한다. 먼저 전체 옵션 텍스트가
+    그 자체로 하나의 조합 SKU로 정식 옵션 목록에 등록돼 있는지 본다(예:
+    "후르츠 30봉+요거트 30봉+프리미엄 30봉 세트" — 이런 조합 자체가 하나의
+    상품으로 등록돼 있으면 한 줄로 그대로 두고 _apply_option_recalc가
+    처리하게 한다). 등록된 조합이 없으면 "+"로 나눠 각 조각을 독립적으로
+    매칭해본다(예: "오리지날 8개입x2박스+초코 8개입x2박스" -> "추억의도나스
+    오리지날 8입"/"추억의도나스 초코 8입"이 각각 따로 등록돼 있는 경우) —
+    조각이 전부 서로 다른 정식 옵션에 매칭되면 그 개수만큼 행을 나누고,
+    각 행의 수량은 그 조각 자체의 배수(임베디드 배수 또는 "xN개/세트/박스/
+    팩")를 반영한다. 각 조각을 상품명과 합쳐 매칭할 때는 그 조각 자체의
+    식별 단어만 검증하므로(_find_option_match), 상품명에 다른 조각의 맛
+    이름이 같이 있어도 엉뚱한 조각에 매칭되지 않는다. 하나라도 매칭 안
+    되거나 같은 옵션으로 겹치면 원본 그대로 둔다(안전하게 사람이 확인
+    하도록)."""
+    table = _load_option_canon_table(vendor_name, cfg)
+    if not table:
+        return [rec]
+    option_text_raw = (rec.get("option") or "").strip()
+    if "+" not in option_text_raw:
+        return [rec]
+
+    product_name = rec.get("product_name") or ""
+    whole_option = _normalize_for_match(option_text_raw, cfg)
+    whole_combined = _normalize_for_match(f"{product_name} {option_text_raw}", cfg)
+    if _find_option_match(table, whole_option, whole_combined):
+        return [rec]
+
+    segments = [s.strip() for s in option_text_raw.split("+") if s.strip()]
+    if len(segments) < 2:
+        return [rec]
+
+    matched = []
+    for seg in segments:
+        seg_norm = _normalize_for_match(seg, cfg)
+        seg_combined = _normalize_for_match(f"{product_name} {seg}", cfg)
+        found = _find_option_match(table, seg_norm, seg_combined)
+        if not found:
+            return [rec]
+        tokens, matched_option, match_text = found
+        multiplier = _multiplier_for_match(matched_option, tokens, match_text, seg_norm)
+        matched.append((matched_option, multiplier))
+
+    matched_options = [m[0] for m in matched]
+    if len(set(matched_options)) != len(matched_options):
+        return [rec]
+
+    out = []
+    for matched_option, multiplier in matched:
+        new_rec = dict(rec)
+        new_rec["option"] = matched_option
+        new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
+        out.append(new_rec)
+    return out
+
+
 def _apply_option_recalc(vendor_name, cfg, rec):
     """옵션 정규화 + 필요 시 수량 재산출을 반영한 새 rec를 반환한다(원본은
     건드리지 않음). 정식 옵션 매칭에 성공하면 옵션명을 그걸로 바꾸고 "총 N"
@@ -438,37 +569,20 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     table = _load_option_canon_table(vendor_name, cfg)
     if not table:
         return rec
-    option_text = _normalize_container_words(
-        _apply_option_synonyms((rec.get("option") or "").strip(), cfg)
-    )
-    combined_text = _normalize_container_words(
-        _apply_option_synonyms(f"{rec.get('product_name') or ''} {rec.get('option') or ''}", cfg)
+    option_text = _normalize_for_match((rec.get("option") or "").strip(), cfg)
+    combined_text = _normalize_for_match(
+        f"{rec.get('product_name') or ''} {rec.get('option') or ''}", cfg
     )
     if not combined_text.strip():
         return rec
 
     new_rec = dict(rec)
-    result = _best_token_match_with_tokens(option_text, table) if option_text else None
-    match_text = option_text
-    if not result:
-        candidate = _best_token_match_with_tokens(combined_text, table)
-        if candidate:
-            option_identity_tokens = {
-                t for t in _tokenize(option_text)
-                if not t[0].isdigit() and t not in _OPTION_BOILERPLATE_TOKENS
-            }
-            if option_identity_tokens <= set(candidate[0]):
-                result = candidate
-                match_text = combined_text
+    found = _find_option_match(table, option_text, combined_text)
 
-    multiplier = 1
-    if result:
-        tokens, matched_option = result
+    if found:
+        tokens, matched_option, match_text = found
         new_rec["option"] = matched_option
-        if not _has_embedded_multiplier(matched_option):
-            multiplier = _detect_multiplier(tokens, match_text)
-            if multiplier == 1:
-                multiplier = _detect_general_multiplier(combined_text)
+        multiplier = _multiplier_for_match(matched_option, tokens, match_text, combined_text)
     else:
         multiplier = _detect_general_multiplier(combined_text)
 
@@ -562,14 +676,19 @@ def write_vendor_file(vendor_name, rows, out_path):
 
     # 옵션 정규화·수량 재산출(1번)/다중 선택 행 분리(2번) 지침 반영: 먼저 한 줄이
     # 서로 다른 정식 옵션 여러 개로 쪼개져야 하는지 보고(분리되면 그걸로 확정),
-    # 분리 대상이 아니면 같은 옵션의 배수인지(수량 재산출)만 확인한다.
+    # 아니면 "+"로 묶인 서로 다른 상품 조합인지 보고(이것도 분리되면 확정),
+    # 그것도 아니면 같은 옵션의 배수인지(수량 재산출)만 확인한다.
     expanded_rows = []
     for rec in rows:
         split_recs = _expand_multi_select(vendor_name, cfg, rec)
         if len(split_recs) > 1:
             expanded_rows.extend(split_recs)
+            continue
+        plus_split = _expand_plus_combo(vendor_name, cfg, split_recs[0])
+        if len(plus_split) > 1:
+            expanded_rows.extend(plus_split)
         else:
-            expanded_rows.append(_apply_option_recalc(vendor_name, cfg, split_recs[0]))
+            expanded_rows.append(_apply_option_recalc(vendor_name, cfg, plus_split[0]))
 
     dup_counts = Counter(k for k in (_dup_key(r) for r in expanded_rows) if k is not None)
     highlight_counts = {"quantity": 0, "duplicate_address": 0, "both": 0}
