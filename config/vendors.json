@@ -377,7 +377,11 @@
       "template_family": "flat_generic",
       "header_row": 1,
       "data_start_row": 2,
-      "option_canon_file": "data/reference/options_투데이넛.json"
+      "option_canon_file": "data/reference/options_투데이넛.json",
+      "option_synonyms": {
+        "청포도": "청포도요거트"
+      },
+      "_option_synonyms_note": "원본 주문서 옵션에 '청포도'로만 오는 경우가 있는데 정식 옵션 목록에는 '청포도요거트' 맛만 있고 별도의 '청포도'(요거트 아닌) 맛은 없음 — 사용자 확인(2026-09-10)."
     },
     "페를레디솔레": {
       "brand_keywords": [],

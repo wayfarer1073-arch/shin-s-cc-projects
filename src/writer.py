@@ -213,6 +213,24 @@ def _strip_redundant_one_multiplier(s):
     return _REDUNDANT_ONE_RE.sub(r' \1', s)
 
 
+def _apply_option_synonyms(text, cfg):
+    """원본 주문서 옵션이 줄임말/구어체로 오는 경우(예: "청포도"가 실제로는
+    "청포도요거트" 맛을 가리키는데 정식 옵션 목록엔 "청포도"만 있는 맛은
+    없고 "청포도요거트"만 있는 경우), 정식 옵션 텍스트로 미리 치환해서
+    토큰 매칭이 되게 한다. 이미 정식 표현대로 온 경우(뒤에 no-op이 되도록
+    부정형 전방탐색으로 이중 치환은 막는다. vendors.json의 "option_synonyms"
+    ({줄임말: 정식표현}) 항목은 사용자에게 직접 확인받고 등록한 것만 넣는다."""
+    synonyms = cfg.get("option_synonyms")
+    if not synonyms or not text:
+        return text
+    for short, long_form in synonyms.items():
+        if not short or short == long_form or not long_form.startswith(short):
+            continue
+        suffix = long_form[len(short):]
+        text = re.sub(re.escape(short) + r'(?!' + re.escape(suffix) + r')', long_form, text)
+    return text
+
+
 def _load_option_canon_table(vendor_name, cfg):
     if vendor_name not in _option_canon_tables:
         opt_file = cfg.get("option_canon_file")
@@ -260,14 +278,22 @@ _EMBEDDED_MULTIPLIER_RE = re.compile(r'[×xX]\s*([2-9]\d*)\s*(?:개(?!입)|세�
 
 
 def _has_embedded_multiplier(matched_option):
-    """정식 옵션명 자체가 이미 "×2세트"처럼 1보다 큰 배수를 포함한 하나의
-    완결된 SKU인지 본다(예: "요거트 30봉×1세트"와 "요거트 30봉×2세트"가
-    각각 별도로 정식 옵션 목록에 등록돼 있는 경우 — 후자는 "2세트짜리 묶음"
-    자체가 하나의 선택지다). 이런 경우엔 그 옵션을 몇 번 골랐는지(판매수량)와
-    옵션 자체의 "×2"를 이중으로 곱하면 안 된다 — 상품명에 그 묶음의 총 개수를
-    설명하는 문구("(총 60봉)")가 같이 있어도, 그건 이미 옵션에 포함된 배수를
-    설명하는 것이지 추가 구매 배수가 아니다."""
-    return bool(_EMBEDDED_MULTIPLIER_RE.search(matched_option))
+    """정식 옵션명 자체가 이미 배수/여러 구성품을 포함한 하나의 완결된 SKU라
+    상품명의 "총 N" 같은 문구를 판매수량에 추가로 곱하면 안 되는 경우를
+    본다. 두 가지:
+
+    1) "×2세트"처럼 1보다 큰 배수가 이미 포함된 경우(예: "요거트 30봉×1세트"와
+       "요거트 30봉×2세트"가 각각 별도로 정식 옵션 목록에 등록된 경우 —
+       후자는 "2세트짜리 묶음" 자체가 하나의 선택지다).
+    2) "후르츠 30봉+요거트 30봉+프리미엄 30봉 세트"처럼 "+"로 서로 다른 맛을
+       묶은 조합 SKU인 경우 — 상품명의 "총 90봉"은 이미 그 세 가지 맛
+       30봉씩을 합친 값을 설명하는 것이지, 이 조합을 3번 사라는 뜻이 아니다.
+
+    두 경우 다, 옵션을 몇 번 골랐는지(판매수량)와 옵션 자체에 이미 포함된
+    배수/구성을 이중으로 곱하면 안 된다 — 상품명에 그 묶음의 총 개수를
+    설명하는 문구가 같이 있어도, 그건 이미 옵션에 포함된 내용을 설명하는
+    것이지 추가 구매 배수가 아니다."""
+    return bool(_EMBEDDED_MULTIPLIER_RE.search(matched_option)) or "+" in matched_option
 
 
 def _detect_multiplier(matched_tokens, raw_text):
@@ -389,8 +415,10 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     table = _load_option_canon_table(vendor_name, cfg)
     if not table:
         return rec
-    option_text = (rec.get("option") or "").strip()
-    combined_text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
+    option_text = _apply_option_synonyms((rec.get("option") or "").strip(), cfg)
+    combined_text = _apply_option_synonyms(
+        f"{rec.get('product_name') or ''} {rec.get('option') or ''}", cfg
+    )
     if not combined_text.strip():
         return rec
 
