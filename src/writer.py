@@ -201,6 +201,16 @@ def _name_pair_match(vendor_name, cfg, rec):
 # 그대로 둔다.
 # ---------------------------------------------------------------------------
 _option_canon_tables = {}
+_REDUNDANT_ONE_RE = re.compile(r'[×xX]1(개|세트|박스|팩)')
+
+
+def _strip_redundant_one_multiplier(s):
+    """정식 옵션 목록에 "30봉×1세트"(기본 1개)와 "30봉×2세트"(2개)가 함께
+    등록된 경우가 있는데, 실제 주문 원문은 기본값일 때 배수 표기 없이 그냥
+    "30봉 세트"로만 오는 경우가 많다. "×1단위"를 "1"을 뗀 단위 단어만 남기고
+    지워서("30봉×1세트" -> "30봉 세트") 이런 기본값 주문도 매치되게 한다.
+    "×2세트"처럼 1이 아닌 배수는 그대로 둬 서로 다른 옵션으로 구분된다."""
+    return _REDUNDANT_ONE_RE.sub(r' \1', s)
 
 
 def _load_option_canon_table(vendor_name, cfg):
@@ -211,7 +221,7 @@ def _load_option_canon_table(vendor_name, cfg):
         else:
             with open(BASE_DIR / opt_file, encoding="utf-8") as f:
                 entries = json.load(f)
-            items = [(_tokenize(e), e) for e in entries]
+            items = [(_tokenize(_strip_redundant_one_multiplier(e)), e) for e in entries]
             items = [(t, e) for t, e in items if t]
             items.sort(key=lambda x: sum(len(t) for t in x[0]), reverse=True)
             _option_canon_tables[vendor_name] = items
