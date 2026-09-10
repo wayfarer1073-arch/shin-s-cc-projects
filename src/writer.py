@@ -501,6 +501,11 @@ def _collapse_repeated_unit(rec):
     new_rec = dict(rec)
     new_rec["option"] = option_text.replace(repeated_span, unit, 1)
     new_rec["quantity"] = (rec.get("quantity") or 1) * count
+    # 배수를 이미 여기서 확정했다는 표시. 상품명 쪽에 "(총 120포)"처럼 같은
+    # 총량을 알려주는 문구가 남아 있으면 뒤의 _apply_option_recalc가 그걸
+    # 보고 또 배수를 곱해버리는 사고(2배 -> 4배)가 나므로, 이 표시가 있으면
+    # 배수 재계산을 건너뛰게 한다.
+    new_rec["_repeated_unit_collapsed"] = True
     return new_rec
 
 
@@ -552,7 +557,7 @@ def _expand_multi_select(vendor_name, cfg, rec):
     return out
 
 
-_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션"}
+_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션", "원통"}
 
 
 def _find_option_match(table, option_text, combined_text):
@@ -614,6 +619,37 @@ def _expand_variety_set(vendor_name, cfg, rec):
     return [rec]
 
 
+def _match_plus_segments(table, cfg, product_name, segments, clean_others):
+    """세그먼트들을 각각 정식 옵션과 매칭해본다. clean_others=True면 각
+    세그먼트를 매칭할 때 "다른" 세그먼트들의 식별 단어를 상품명에서 지운
+    텍스트를 쓴다(예: "레몬 200g+모로오렌지 200g"에서 "레몬"을 매칭할 때
+    상품명의 "모로오렌지" 단어를 지워서 "레몬"이 "캔디"와 바로 붙게 만듦
+    — 상품명이 "레몬/모로오렌지 캔디사탕"처럼 두 맛을 나란히 소개하는
+    문구라 원래는 "모로오렌지"가 "레몬"과 "캔디" 사이에 끼어들어 매칭이
+    안 되는 문제를 해결). 전부 매칭되면 [(matched_option, multiplier), ...]
+    를, 하나라도 실패하면 None을 반환한다."""
+    matched = []
+    for i, seg in enumerate(segments):
+        seg_combined_name = product_name
+        if clean_others:
+            other_words = set()
+            for j, other_seg in enumerate(segments):
+                if j == i:
+                    continue
+                other_words |= {t for t in _tokenize(other_seg) if not t[0].isdigit()}
+            for w in other_words:
+                seg_combined_name = seg_combined_name.replace(w, "")
+        seg_norm = _normalize_for_match(seg, cfg)
+        seg_combined = _normalize_for_match(f"{seg_combined_name} {seg}", cfg)
+        found = _find_option_match(table, seg_norm, seg_combined)
+        if not found:
+            return None
+        tokens, matched_option, match_text = found
+        multiplier = _multiplier_for_match(matched_option, tokens, match_text, seg_norm)
+        matched.append((matched_option, multiplier))
+    return matched
+
+
 def _expand_plus_combo(vendor_name, cfg, rec):
     """"+"로 여러 항목이 묶인 옵션을 처리한다. 먼저 전체 옵션 텍스트가
     그 자체로 하나의 조합 SKU로 정식 옵션 목록에 등록돼 있는지 본다(예:
@@ -621,14 +657,15 @@ def _expand_plus_combo(vendor_name, cfg, rec):
     상품으로 등록돼 있으면 한 줄로 그대로 두고 _apply_option_recalc가
     처리하게 한다). 등록된 조합이 없으면 "+"로 나눠 각 조각을 독립적으로
     매칭해본다(예: "오리지날 8개입x2박스+초코 8개입x2박스" -> "추억의도나스
-    오리지날 8입"/"추억의도나스 초코 8입"이 각각 따로 등록돼 있는 경우) —
-    조각이 전부 서로 다른 정식 옵션에 매칭되면 그 개수만큼 행을 나누고,
-    각 행의 수량은 그 조각 자체의 배수(임베디드 배수 또는 "xN개/세트/박스/
-    팩")를 반영한다. 각 조각을 상품명과 합쳐 매칭할 때는 그 조각 자체의
-    식별 단어만 검증하므로(_find_option_match), 상품명에 다른 조각의 맛
-    이름이 같이 있어도 엉뚱한 조각에 매칭되지 않는다. 하나라도 매칭 안
-    되거나 같은 옵션으로 겹치면 원본 그대로 둔다(안전하게 사람이 확인
-    하도록)."""
+    오리지날 8입"/"추억의도나스 초코 8입"이 각각 따로 등록돼 있는 경우).
+    이게 안 되면(상품명에 다른 조각의 맛 이름이 끼어들어 있어 세그먼트
+    매칭이 실패하는 경우) 다른 조각들의 식별 단어를 상품명에서 지운
+    텍스트로 다시 각 조각을 매칭해본다("레몬 200g+모로오렌지 200g" 같은
+    같은 상품의 서로 다른 맛 조합). 둘 중 하나라도 전체 조각이 매칭되고
+    서로 다른 정식 옵션이면(같은 옵션으로 겹치지 않으면) 그 개수만큼 행을
+    나누고, 각 행의 수량은 그 조각 자체의 배수(임베디드 배수 또는 "xN개/
+    세트/박스/팩")를 반영한다. 둘 다 안 되면 원본 그대로 둔다(안전하게
+    사람이 확인하도록)."""
     table = _load_option_canon_table(vendor_name, cfg)
     if not table:
         return [rec]
@@ -646,20 +683,11 @@ def _expand_plus_combo(vendor_name, cfg, rec):
     if len(segments) < 2:
         return [rec]
 
-    matched = []
-    all_ok = True
-    for seg in segments:
-        seg_norm = _normalize_for_match(seg, cfg)
-        seg_combined = _normalize_for_match(f"{product_name} {seg}", cfg)
-        found = _find_option_match(table, seg_norm, seg_combined)
-        if not found:
-            all_ok = False
-            break
-        tokens, matched_option, match_text = found
-        multiplier = _multiplier_for_match(matched_option, tokens, match_text, seg_norm)
-        matched.append((matched_option, multiplier))
+    matched = _match_plus_segments(table, cfg, product_name, segments, clean_others=False)
+    if matched is None:
+        matched = _match_plus_segments(table, cfg, product_name, segments, clean_others=True)
 
-    if all_ok:
+    if matched is not None:
         matched_options = [m[0] for m in matched]
         if len(set(matched_options)) == len(matched_options):
             out = []
@@ -670,41 +698,7 @@ def _expand_plus_combo(vendor_name, cfg, rec):
                 out.append(new_rec)
             return out
 
-    return _fallback_first_segment(vendor_name, cfg, rec, table, product_name, segments)
-
-
-def _fallback_first_segment(vendor_name, cfg, rec, table, product_name, segments):
-    """조각별 독립 매칭이 안 될 때의 마지막 시도. "레몬 200g+모로오렌지
-    200g"처럼 같은 상품의 서로 다른 맛을 "+"로 같이 담은 옵션은, 상품명이
-    "레몬/모로오렌지 캔디사탕"처럼 두 맛을 나란히 소개하는 문구라 "모로오렌지"
-    가 "레몬"과 "캔디" 사이에 끼어들어("레몬...모로오렌지캔디...") 첫 번째
-    조각("레몬")이 정식 옵션명("레몬캔디")과 매칭이 안 된다. 이때 다른
-    조각들의 식별 단어를 상품명에서 지운 텍스트로 첫 조각만 다시 매칭해
-    본다(그러면 "레몬"이 "캔디"와 바로 붙어 매칭된다). 매칭되면 그 맛을
-    대표 표기로 쓰고, 수량은 (그 조각 자체의 배수)와 (조각 개수) 중 큰
-    쪽으로 잡는다 — 조각이 N개면 적어도 N개는 담긴 것이므로. 그래도 안
-    되면 원본 그대로 둔다."""
-    first_seg = segments[0]
-    other_words = set()
-    for seg in segments[1:]:
-        other_words |= {t for t in _tokenize(seg) if not t[0].isdigit()}
-    cleaned_name = product_name
-    for w in other_words:
-        cleaned_name = cleaned_name.replace(w, "")
-
-    seg_norm = _normalize_for_match(first_seg, cfg)
-    cleaned_combined = _normalize_for_match(f"{cleaned_name} {first_seg}", cfg)
-    found = _find_option_match(table, seg_norm, cleaned_combined)
-    if not found:
-        return [rec]
-
-    tokens, matched_option, match_text = found
-    multiplier = _multiplier_for_match(matched_option, tokens, match_text, seg_norm)
-    multiplier = max(multiplier, len(segments))
-    new_rec = dict(rec)
-    new_rec["option"] = matched_option
-    new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
-    return [new_rec]
+    return [rec]
 
 
 def _apply_option_recalc(vendor_name, cfg, rec):
@@ -736,30 +730,34 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     목록에 아예 없는 경우(예: "검은콩오곡")에 상품명의 다른 맛 이름들이
     우연히 다 모여서 전혀 다른 조합 옵션에 매칭돼버리는 사고가 난다 — 이럴
     땐 억지로 맞추지 말고 원본 그대로 두는 게 안전하다."""
+    new_rec = dict(rec)
+    already_resolved = new_rec.pop("_repeated_unit_collapsed", False)
+
     table = _load_option_canon_table(vendor_name, cfg)
     if not table:
-        return rec
+        return new_rec
     option_text = _normalize_for_match((rec.get("option") or "").strip(), cfg)
     combined_text = _normalize_for_match(
         f"{rec.get('product_name') or ''} {rec.get('option') or ''}", cfg
     )
     if not combined_text.strip():
-        return rec
+        return new_rec
 
-    new_rec = dict(rec)
     found = _find_option_match(table, option_text, combined_text)
 
     if found:
         tokens, matched_option, match_text = found
         new_rec["option"] = matched_option
-        multiplier = _multiplier_for_match(matched_option, tokens, match_text, combined_text)
+        multiplier = 1 if already_resolved else _multiplier_for_match(
+            matched_option, tokens, match_text, combined_text
+        )
     else:
-        multiplier = _detect_general_multiplier(combined_text)
+        multiplier = 1 if already_resolved else _detect_general_multiplier(combined_text)
 
     # 옵션 필드가 아예 비어 있으면 상품명이 그 리스팅의 개수를 말해주는
     # 유일한 정보이므로, 다른 배수 근거가 없을 때 상품명의 "N개"(곱셈
     # 표기 없는 낱개 수)를 그대로 판매수량으로 쓴다.
-    if multiplier == 1 and not option_text.strip():
+    if multiplier == 1 and not already_resolved and not option_text.strip():
         bare_count = _detect_bare_count(rec.get("product_name") or "")
         if bare_count:
             multiplier = bare_count
