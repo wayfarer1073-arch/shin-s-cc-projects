@@ -169,15 +169,20 @@ def _best_token_match(text, candidates):
 
 def _best_validated_match(text, candidates, identity_tokens):
     """_best_token_match_with_tokens와 같지만, 후보의 필수 토큰이 text에
-    다 있다는 것뿐 아니라 identity_tokens(식별 단어 집합)가 그 후보의
-    토큰에 전부 포함되는지도 같이 확인해서, 그 조건까지 만족하는 첫 후보를
-    반환한다(둘 다 만족 못 하면 다음으로 구체적인 후보를 계속 시도한다 —
-    가장 구체적인 후보 하나만 보고 포기하면, 상품명에 여러 맛 이름이 같이
-    있는 경우 엉뚱한 맛으로 매칭된 걸 걸러내고도 실제로 맞는 다른 후보를
-    놓치게 된다)."""
+    다 있다는 것뿐 아니라 identity_tokens(식별 단어 집합)가 그 후보에서도
+    확인되는지 같이 본다 — identity 토큰 하나하나가 후보 토큰 중 하나와
+    정확히 같거나 그 후보 토큰의 부분 문자열이면 인정한다("도나스"는
+    "추억의도나스"의 부분 문자열이라 인정 — 정식 옵션명이 브랜드 접두어를
+    붙이는 경우가 흔해서, 원본 옵션이 그 접두어 없이 축약해서 오면 정확히
+    같은 토큰이 아니라는 이유만으로 매칭을 놓치게 된다). 둘 다 만족 못
+    하면 다음으로 구체적인 후보를 계속 시도한다 — 가장 구체적인 후보
+    하나만 보고 포기하면, 상품명에 여러 맛 이름이 같이 있는 경우 엉뚱한
+    맛으로 매칭된 걸 걸러내고도 실제로 맞는 다른 후보를 놓치게 된다."""
     text = re.sub(r'[\s&+/,.\-_★]+', '', text)
     for tokens, payload in candidates:
-        if identity_tokens <= tokens and all(tok in text for tok in tokens):
+        if not all(tok in text for tok in tokens):
+            continue
+        if all(any(idt == ct or idt in ct for ct in tokens) for idt in identity_tokens):
             return tokens, payload
     return None
 
@@ -386,12 +391,15 @@ def _detect_multiplier(matched_tokens, raw_text):
 
 def _detect_general_multiplier(raw_text):
     """정식 옵션 매칭 성공 여부와 무관하게 원문 자체만으로 판단 가능한 배수
-    (위 우선순위 2, 3번). 괄호 묶음 수를 먼저 보고, 없으면 "xN개" 곱셈 표기를
-    본다."""
+    (위 우선순위 2, 3번). 괄호 묶음 수를 먼저 보되, "1박스"처럼 1묶음이라고만
+    적힌 경우는 배수라고 할 게 없는 경우라("33g, 10개 (1박스)"처럼 낱개 수
+    "10개"가 진짜 수량이고 "1박스"는 그 낱개들이 박스 하나에 들었다는
+    설명일 뿐인 경우가 있다) 그 경우엔 배수 후보로 치지 않고 다음(xN개
+    곱셈 표기)으로 넘어간다."""
     m = _BOX_TOTAL_RE.search(raw_text)
     if m:
         mult = int(m.group(1))
-        if mult >= 1:
+        if mult > 1:
             return mult
     m = _X_COUNT_RE.search(raw_text)
     if m:
@@ -399,6 +407,19 @@ def _detect_general_multiplier(raw_text):
         if mult >= 1:
             return mult
     return 1
+
+
+_BARE_COUNT_RE = re.compile(r'(?<![×xX])(\d+)개(?!입)')
+
+
+def _detect_bare_count(text):
+    """"x"/"×" 곱셈 표기 없이 그냥 "N개"라고만 적힌 낱개 수를 찾는다(예:
+    "브라카 커피 비스킷 150g, 4개" — 옵션 필드가 아예 없어서 상품명 자체가
+    이 리스팅이 몇 개들이인지 말해주는 유일한 정보인 경우에 쓴다). 못
+    찾으면 None을 반환한다(1을 반환하면 "명시적으로 1개"인지 "아무 근거
+    없음"인지 구분이 안 되므로)."""
+    m = _BARE_COUNT_RE.search(text)
+    return int(m.group(1)) if m else None
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +500,36 @@ def _multiplier_for_match(matched_option, tokens, match_text, general_text):
     if multiplier == 1:
         multiplier = _detect_general_multiplier(general_text)
     return multiplier
+
+
+def _expand_variety_set(vendor_name, cfg, rec):
+    """일부 상품은 정식 옵션 목록에 "여러 캐릭터/맛을 합친" 콤보 항목이
+    있어도 실제로는 항상 "각각 하나씩"을 뜻해서 그 콤보 항목과 매칭하면
+    안 되고, vendors.json에 등록해둔 개별 구성 요소들로 무조건 나눠야
+    하는 경우가 있다(예: 먼작귀 보틀피규어 "3종 세트" — 사용자가 직접
+    확인해준 특이 케이스). cfg["variety_set_groups"]에 그런 상품군이
+    등록돼 있고 상품명이 그 그룹의 product_contains 키워드를 전부
+    포함하면, 원문에서 판단되는 배수(세트 수)만큼 구성 요소 각각에
+    적용해 그 개수만큼 행을 나눈다. 해당 없으면 [rec] 그대로 반환한다."""
+    groups = cfg.get("variety_set_groups")
+    if not groups:
+        return [rec]
+    product_name = rec.get("product_name") or ""
+    option_text = rec.get("option") or ""
+    for group in groups:
+        if not all(kw in product_name for kw in group["product_contains"]):
+            continue
+        combined = _normalize_for_match(f"{product_name} {option_text}", cfg)
+        multiplier = _detect_general_multiplier(combined)
+        quantity = (rec.get("quantity") or 1) * multiplier
+        out = []
+        for component in group["components"]:
+            new_rec = dict(rec)
+            new_rec["option"] = component
+            new_rec["quantity"] = quantity
+            out.append(new_rec)
+        return out
+    return [rec]
 
 
 def _expand_plus_combo(vendor_name, cfg, rec):
@@ -586,6 +637,14 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     else:
         multiplier = _detect_general_multiplier(combined_text)
 
+    # 옵션 필드가 아예 비어 있으면 상품명이 그 리스팅의 개수를 말해주는
+    # 유일한 정보이므로, 다른 배수 근거가 없을 때 상품명의 "N개"(곱셈
+    # 표기 없는 낱개 수)를 그대로 판매수량으로 쓴다.
+    if multiplier == 1 and not option_text.strip():
+        bare_count = _detect_bare_count(rec.get("product_name") or "")
+        if bare_count:
+            multiplier = bare_count
+
     if multiplier > 1:
         new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
 
@@ -676,6 +735,7 @@ def write_vendor_file(vendor_name, rows, out_path):
 
     # 옵션 정규화·수량 재산출(1번)/다중 선택 행 분리(2번) 지침 반영: 먼저 한 줄이
     # 서로 다른 정식 옵션 여러 개로 쪼개져야 하는지 보고(분리되면 그걸로 확정),
+    # 등록된 "무조건 개별 구성요소로 나누는" 상품군인지 보고(해당하면 확정),
     # 아니면 "+"로 묶인 서로 다른 상품 조합인지 보고(이것도 분리되면 확정),
     # 그것도 아니면 같은 옵션의 배수인지(수량 재산출)만 확인한다.
     expanded_rows = []
@@ -684,7 +744,11 @@ def write_vendor_file(vendor_name, rows, out_path):
         if len(split_recs) > 1:
             expanded_rows.extend(split_recs)
             continue
-        plus_split = _expand_plus_combo(vendor_name, cfg, split_recs[0])
+        variety_split = _expand_variety_set(vendor_name, cfg, split_recs[0])
+        if len(variety_split) > 1:
+            expanded_rows.extend(variety_split)
+            continue
+        plus_split = _expand_plus_combo(vendor_name, cfg, variety_split[0])
         if len(plus_split) > 1:
             expanded_rows.extend(plus_split)
         else:
