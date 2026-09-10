@@ -647,27 +647,64 @@ def _expand_plus_combo(vendor_name, cfg, rec):
         return [rec]
 
     matched = []
+    all_ok = True
     for seg in segments:
         seg_norm = _normalize_for_match(seg, cfg)
         seg_combined = _normalize_for_match(f"{product_name} {seg}", cfg)
         found = _find_option_match(table, seg_norm, seg_combined)
         if not found:
-            return [rec]
+            all_ok = False
+            break
         tokens, matched_option, match_text = found
         multiplier = _multiplier_for_match(matched_option, tokens, match_text, seg_norm)
         matched.append((matched_option, multiplier))
 
-    matched_options = [m[0] for m in matched]
-    if len(set(matched_options)) != len(matched_options):
+    if all_ok:
+        matched_options = [m[0] for m in matched]
+        if len(set(matched_options)) == len(matched_options):
+            out = []
+            for matched_option, multiplier in matched:
+                new_rec = dict(rec)
+                new_rec["option"] = matched_option
+                new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
+                out.append(new_rec)
+            return out
+
+    return _fallback_first_segment(vendor_name, cfg, rec, table, product_name, segments)
+
+
+def _fallback_first_segment(vendor_name, cfg, rec, table, product_name, segments):
+    """조각별 독립 매칭이 안 될 때의 마지막 시도. "레몬 200g+모로오렌지
+    200g"처럼 같은 상품의 서로 다른 맛을 "+"로 같이 담은 옵션은, 상품명이
+    "레몬/모로오렌지 캔디사탕"처럼 두 맛을 나란히 소개하는 문구라 "모로오렌지"
+    가 "레몬"과 "캔디" 사이에 끼어들어("레몬...모로오렌지캔디...") 첫 번째
+    조각("레몬")이 정식 옵션명("레몬캔디")과 매칭이 안 된다. 이때 다른
+    조각들의 식별 단어를 상품명에서 지운 텍스트로 첫 조각만 다시 매칭해
+    본다(그러면 "레몬"이 "캔디"와 바로 붙어 매칭된다). 매칭되면 그 맛을
+    대표 표기로 쓰고, 수량은 (그 조각 자체의 배수)와 (조각 개수) 중 큰
+    쪽으로 잡는다 — 조각이 N개면 적어도 N개는 담긴 것이므로. 그래도 안
+    되면 원본 그대로 둔다."""
+    first_seg = segments[0]
+    other_words = set()
+    for seg in segments[1:]:
+        other_words |= {t for t in _tokenize(seg) if not t[0].isdigit()}
+    cleaned_name = product_name
+    for w in other_words:
+        cleaned_name = cleaned_name.replace(w, "")
+
+    seg_norm = _normalize_for_match(first_seg, cfg)
+    cleaned_combined = _normalize_for_match(f"{cleaned_name} {first_seg}", cfg)
+    found = _find_option_match(table, seg_norm, cleaned_combined)
+    if not found:
         return [rec]
 
-    out = []
-    for matched_option, multiplier in matched:
-        new_rec = dict(rec)
-        new_rec["option"] = matched_option
-        new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
-        out.append(new_rec)
-    return out
+    tokens, matched_option, match_text = found
+    multiplier = _multiplier_for_match(matched_option, tokens, match_text, seg_norm)
+    multiplier = max(multiplier, len(segments))
+    new_rec = dict(rec)
+    new_rec["option"] = matched_option
+    new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
+    return [new_rec]
 
 
 def _apply_option_recalc(vendor_name, cfg, rec):
