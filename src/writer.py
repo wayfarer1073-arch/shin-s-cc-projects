@@ -213,6 +213,20 @@ def _strip_redundant_one_multiplier(s):
     return _REDUNDANT_ONE_RE.sub(r' \1', s)
 
 
+_CONTAINER_UNIT_RE = re.compile(r'(\d)(박스|팩)')
+
+
+def _normalize_container_words(s):
+    """"박스"/"팩"/"세트"는 다 같은 "묶음" 뜻으로 마켓/협력사마다 표기가
+    갈린다("30봉x2박스" 원문 vs 정식 옵션 목록의 "30봉x2세트"). 배수 판단·
+    옵션 매칭에서는 이 단어 차이가 다른 옵션을 뜻하는 게 아니므로, 숫자
+    뒤에 오는 "박스"/"팩"을 "세트"로 통일해서 비교한다(정식 옵션 목록
+    토큰화할 때도 똑같이 적용해 양쪽이 같은 기준으로 맞는다). 배수 감지
+    정규식(_BOX_TOTAL_RE, _X_COUNT_RE)은 이미 세 단어를 동등하게 취급하고
+    있어 이 정규화와 일관된다."""
+    return _CONTAINER_UNIT_RE.sub(r'\g<1>세트', s)
+
+
 def _apply_option_synonyms(text, cfg):
     """원본 주문서 옵션이 줄임말/구어체로 오는 경우(예: "청포도"가 실제로는
     "청포도요거트" 맛을 가리키는데 정식 옵션 목록엔 "청포도"만 있는 맛은
@@ -239,7 +253,10 @@ def _load_option_canon_table(vendor_name, cfg):
         else:
             with open(BASE_DIR / opt_file, encoding="utf-8") as f:
                 entries = json.load(f)
-            items = [(_tokenize(_strip_redundant_one_multiplier(e)), e) for e in entries]
+            items = [
+                (_tokenize(_normalize_container_words(_strip_redundant_one_multiplier(e))), e)
+                for e in entries
+            ]
             items = [(t, e) for t, e in items if t]
             items.sort(key=lambda x: sum(len(t) for t in x[0]), reverse=True)
             _option_canon_tables[vendor_name] = items
@@ -415,9 +432,11 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     table = _load_option_canon_table(vendor_name, cfg)
     if not table:
         return rec
-    option_text = _apply_option_synonyms((rec.get("option") or "").strip(), cfg)
-    combined_text = _apply_option_synonyms(
-        f"{rec.get('product_name') or ''} {rec.get('option') or ''}", cfg
+    option_text = _normalize_container_words(
+        _apply_option_synonyms((rec.get("option") or "").strip(), cfg)
+    )
+    combined_text = _normalize_container_words(
+        _apply_option_synonyms(f"{rec.get('product_name') or ''} {rec.get('option') or ''}", cfg)
     )
     if not combined_text.strip():
         return rec
