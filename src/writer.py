@@ -403,6 +403,9 @@ def _expand_multi_select(vendor_name, cfg, rec):
     return out
 
 
+_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션"}
+
+
 def _apply_option_recalc(vendor_name, cfg, rec):
     """옵션 정규화 + 필요 시 수량 재산출을 반영한 새 rec를 반환한다(원본은
     건드리지 않음). 정식 옵션 매칭에 성공하면 옵션명을 그걸로 바꾸고 "총 N"
@@ -424,9 +427,12 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     상품명을 더한 전체 텍스트로 찾은 후보는 한 번 더 검증한다: 옵션 텍스트
     자체에 있는 "식별 단어"(숫자로 시작하지 않는 한글 토큰 — "검은콩오곡"
     같은 맛/품목 이름. "20개입"처럼 숫자로 시작하는 수량 표기 토큰은 애초에
-    상품명 쪽에 있는 게 정상이라 제외)가 후보의 필수 토큰에 전부 포함돼
-    있어야 그 매칭을 받아들인다. 안 그러면, 고객이 실제로 고른 맛이 정식
-    옵션 목록에 아예 없는 경우(예: "검은콩오곡")에 상품명의 다른 맛 이름들이
+    상품명 쪽에 있는 게 정상이라 제외하고, "선택"/"옵션"처럼 마켓 export가
+    옵션 필드 앞에 습관적으로 붙이는 상투어도 제외 — 정식 옵션 목록 항목이
+    "선택:"으로 시작하지 않는 협력사가 많아서, 이 단어를 식별 단어로 치면
+    정상적인 매칭까지 다 막혀버린다)가 후보의 필수 토큰에 전부 포함돼 있어야
+    그 매칭을 받아들인다. 안 그러면, 고객이 실제로 고른 맛이 정식 옵션
+    목록에 아예 없는 경우(예: "검은콩오곡")에 상품명의 다른 맛 이름들이
     우연히 다 모여서 전혀 다른 조합 옵션에 매칭돼버리는 사고가 난다 — 이럴
     땐 억지로 맞추지 말고 원본 그대로 두는 게 안전하다."""
     table = _load_option_canon_table(vendor_name, cfg)
@@ -447,7 +453,10 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     if not result:
         candidate = _best_token_match_with_tokens(combined_text, table)
         if candidate:
-            option_identity_tokens = {t for t in _tokenize(option_text) if not t[0].isdigit()}
+            option_identity_tokens = {
+                t for t in _tokenize(option_text)
+                if not t[0].isdigit() and t not in _OPTION_BOILERPLATE_TOKENS
+            }
             if option_identity_tokens <= set(candidate[0]):
                 result = candidate
                 match_text = combined_text
