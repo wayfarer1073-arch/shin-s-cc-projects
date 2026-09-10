@@ -230,18 +230,22 @@ def _load_option_canon_table(vendor_name, cfg):
 #      수("70g x 16개")가 같이 적혀 있어도 실제 판매 단위는 이 괄호 표기이므로
 #      더 우선한다. 정식 옵션 매칭 여부와 무관하게(카탈로그에 없는 상품이라도)
 #      원문에서 바로 판단할 수 있다.
-#   3) "옵션 자체 수량 없이 그냥 x N개" — "아마드티 얼그레이 20티백x6개"처럼
-#      옵션명("20티백")에는 개수가 없고 상품명에 "xN개"만 곱셈으로 붙은 경우.
-#      정식 옵션 매칭 여부와 무관하게 원문에서 판단한다. "한입 허니 꽈배기
-#      520gx3개"(옵션 "520g 3개")처럼 옵션 자체에 이미 그 수량이 포함된
-#      것처럼 보여도, 상품명 쪽의 "x3개"는 여전히 "그 옵션을 3개 산다"는
-#      뜻이므로 곱한다 — "3개"가 옵션명과 겹친다고 배수를 무시하지 않는다.
+#   3) "옵션 자체 수량 없이 그냥 x N개/세트/박스/팩" — "아마드티 얼그레이
+#      20티백x6개"처럼 옵션명("20티백")에는 개수가 없고 상품명에 "xN개"만
+#      곱셈으로 붙은 경우. 정식 옵션 매칭 여부와 무관하게 원문에서 판단한다.
+#      "한입 허니 꽈배기 520gx3개"(옵션 "520g 3개")처럼 옵션 자체에 이미 그
+#      수량이 포함된 것처럼 보여도, 상품명 쪽의 "x3개"는 여전히 "그 옵션을
+#      3개 산다"는 뜻이므로 곱한다 — "3개"가 옵션명과 겹친다고 배수를 무시하지
+#      않는다. 단, "45개입"처럼 "개" 바로 뒤에 "입"이 붙으면 그건 한 봉지 안에
+#      든 낱개 수(포장 단위 설명)라 구매 배수가 아니므로 매칭에서 제외한다
+#      (예: "15gx45개입, 675g" — 675g짜리 한 봉지 안에 15g들이 45개가 들어
+#      있다는 뜻이지 45개를 주문한다는 뜻이 아니다).
 # 위 셋 중 어느 것도 명시적으로 없으면 배수 1(=원본 수량 그대로)로 본다.
 # ---------------------------------------------------------------------------
 _UNIT_TOKEN_RE = re.compile(r'^(\d+)([가-힣a-zA-Z]+)$')
 _TOTAL_RE = re.compile(r'총\s*(\d+)\s*([가-힣a-zA-Z]+)')
 _BOX_TOTAL_RE = re.compile(r'\((\d+)\s*(?:박스|세트|팩)\)')
-_X_COUNT_RE = re.compile(r'[xX×]\s*(\d+)\s*개')
+_X_COUNT_RE = re.compile(r'[xX×]\s*(\d+)\s*(?:개(?!입)|세트|박스|팩)')
 
 
 def _detect_multiplier(matched_tokens, raw_text):
@@ -340,24 +344,53 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     배수까지 확인한다. 매칭에 실패해도(카탈로그에 없는 상품이라도) 원문에
     괄호 묶음 수나 "xN개" 표기가 있으면 배수만 반영한다(옵션명은 원본 그대로
     둔다) — 예: "추억의 도나스 70g x 16개 (2박스)"는 정식 옵션 목록에 없지만
-    "(2박스)"는 그대로 판단 가능하다."""
+    "(2박스)"는 그대로 판단 가능하다.
+
+    옵션 매칭은 옵션 텍스트만으로 먼저 시도하고, 거기서 못 찾을 때만 상품명을
+    더한 전체 텍스트로 넘어간다. "OO 모음전 / 후르츠,요거트,치즈퀴노아 등"처럼
+    상품명 자체가 판매 중인 여러 맛을 소개하는 문구인 경우가 있어서, 고객이
+    실제로 고른 건 "요거트" 단품인데 상품명에 다른 맛 이름들이 같이 있다는
+    이유만으로 더 구체적인(토큰이 많은) 조합 옵션("후르츠+요거트 세트" 등)에
+    잘못 매칭될 수 있기 때문이다 — 옵션 텍스트 자체만으로 이미 확정 가능한
+    경우에는 상품명을 끌어들이지 않는다. 옵션 텍스트만으로 못 찾을 때만(예:
+    옵션에 브랜드/상품 식별 정보가 아예 없는 이플코리아 케이스) 상품명을 더한
+    전체 텍스트로 재시도한다.
+
+    상품명을 더한 전체 텍스트로 찾은 후보는 한 번 더 검증한다: 옵션 텍스트
+    자체에 있는 "식별 단어"(숫자로 시작하지 않는 한글 토큰 — "검은콩오곡"
+    같은 맛/품목 이름. "20개입"처럼 숫자로 시작하는 수량 표기 토큰은 애초에
+    상품명 쪽에 있는 게 정상이라 제외)가 후보의 필수 토큰에 전부 포함돼
+    있어야 그 매칭을 받아들인다. 안 그러면, 고객이 실제로 고른 맛이 정식
+    옵션 목록에 아예 없는 경우(예: "검은콩오곡")에 상품명의 다른 맛 이름들이
+    우연히 다 모여서 전혀 다른 조합 옵션에 매칭돼버리는 사고가 난다 — 이럴
+    땐 억지로 맞추지 말고 원본 그대로 두는 게 안전하다."""
     table = _load_option_canon_table(vendor_name, cfg)
     if not table:
         return rec
-    text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
-    if not text.strip():
+    option_text = (rec.get("option") or "").strip()
+    combined_text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
+    if not combined_text.strip():
         return rec
 
     new_rec = dict(rec)
-    result = _best_token_match_with_tokens(text, table)
+    result = _best_token_match_with_tokens(option_text, table) if option_text else None
+    match_text = option_text
+    if not result:
+        candidate = _best_token_match_with_tokens(combined_text, table)
+        if candidate:
+            option_identity_tokens = {t for t in _tokenize(option_text) if not t[0].isdigit()}
+            if option_identity_tokens <= set(candidate[0]):
+                result = candidate
+                match_text = combined_text
+
     multiplier = 1
     if result:
         tokens, matched_option = result
         new_rec["option"] = matched_option
-        multiplier = _detect_multiplier(tokens, text)
+        multiplier = _detect_multiplier(tokens, match_text)
 
     if multiplier == 1:
-        multiplier = _detect_general_multiplier(text)
+        multiplier = _detect_general_multiplier(combined_text)
 
     if multiplier > 1:
         new_rec["quantity"] = (rec.get("quantity") or 1) * multiplier
