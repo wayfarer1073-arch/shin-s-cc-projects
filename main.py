@@ -45,7 +45,7 @@ def run(input_paths, out_dir):
     run_date_compact = run_date.replace("-", "")
 
     written = []
-    highlight_totals = {"quantity": 0, "duplicate_address": 0, "both": 0}
+    highlight_totals = {"quantity": 0, "duplicate_address": 0, "both": 0, "name_pair_unmatched": 0}
     for vendor, rows in by_vendor.items():
         # 브랜드별로 나눠서 각각 별도 파일로 작성한다 — 파일명 규칙(가공 지침 8번)이
         # "{YYYYMMDD}_{협력사}_{사업부(MH/JM/MSNA)}"라 한 협력사가 여러 브랜드
@@ -68,6 +68,8 @@ def run(input_paths, out_dir):
                 marks.append(f"동일수령인·주소 {highlight_counts['duplicate_address']}건")
             if highlight_counts["both"]:
                 marks.append(f"둘다 해당 {highlight_counts['both']}건")
+            if highlight_counts["name_pair_unmatched"]:
+                marks.append(f"참고표 미매칭(원본유지) {highlight_counts['name_pair_unmatched']}건")
             mark_note = f" ({', '.join(marks)} 강조표시)" if marks else ""
             print(f"[작성] {vendor} ({brand}): {len(brand_rows)}건 -> {out_path}{mark_note}")
 

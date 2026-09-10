@@ -12,6 +12,8 @@ from openpyxl.styles import Font, PatternFill
 QTY_FILL = PatternFill(fill_type="solid", start_color="FFF9E48B", end_color="FFF9E48B")
 DUP_FILL = PatternFill(fill_type="solid", start_color="FFBFE0F5", end_color="FFBFE0F5")
 BOTH_FILL = PatternFill(fill_type="solid", start_color="FFF7C592", end_color="FFF7C592")
+# 상품/상품명 참고표에 없어서 원본 그대로 채운 행(수기 확인 필요) 표시용 별색.
+UNMATCHED_NAME_FILL = PatternFill(fill_type="solid", start_color="FFE0B3FF", end_color="FFE0B3FF")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -206,14 +208,27 @@ def _load_name_pair_table(vendor_name, cfg):
 
 
 def _name_pair_match(vendor_name, cfg, rec):
+    """상품명/옵션 조합에 맞는 협력사 자체 표기("상품"/"상품명" 쌍)를 찾는다.
+    옵션 텍스트 자체의 식별 단어가 후보에 없으면(예: 상품명이 "레몬/
+    모로오렌지" 둘 다 소개하는 문구인데 고객은 실제로 "레몬"만 골랐을 때,
+    상품명의 "모로오렌지"에 엉뚱하게 끌려 매칭되는 사고) 매칭을 인정하지
+    않는다 — 정식 옵션 매칭(_find_option_match)과 같은 이유·같은 방식."""
     table = _load_name_pair_table(vendor_name, cfg)
     if not table:
         return None
-    text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
-    if not text.strip():
+    option_text = (rec.get("option") or "").strip()
+    combined_text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
+    if not combined_text.strip():
         return None
-    payload = _best_token_match(text, table)
-    return {"a": payload[0], "b": payload[1]} if payload else None
+    identity_tokens = {
+        t for t in _tokenize(option_text)
+        if not t[0].isdigit() and t not in _OPTION_BOILERPLATE_TOKENS
+    }
+    result = _best_validated_match(combined_text, table, identity_tokens)
+    if not result:
+        return None
+    _, payload = result
+    return {"a": payload[0], "b": payload[1]}
 
 
 # ---------------------------------------------------------------------------
@@ -690,7 +705,9 @@ def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cf
         match = _name_pair_match(vendor_name, cfg, rec)
         if match:
             return match[kind_spec[1]]
-        return rec.get("product_name") or None
+        if kind_spec[1] == "a":
+            return rec.get("product_name") or None
+        return rec.get("option") or rec.get("product_name") or None
     return None
 
 
@@ -709,7 +726,9 @@ def _dup_key(rec):
     return (name, addr)
 
 
-def _highlight_fill_for(rec, dup_counts):
+def _highlight_fill_for(rec, dup_counts, name_pair_unmatched=False):
+    if name_pair_unmatched:
+        return UNMATCHED_NAME_FILL
     is_qty = (rec.get("quantity") or 1) > 1
     key = _dup_key(rec)
     is_dup = key is not None and dup_counts[key] >= 2
@@ -755,7 +774,8 @@ def write_vendor_file(vendor_name, rows, out_path):
             expanded_rows.append(_apply_option_recalc(vendor_name, cfg, plus_split[0]))
 
     dup_counts = Counter(k for k in (_dup_key(r) for r in expanded_rows) if k is not None)
-    highlight_counts = {"quantity": 0, "duplicate_address": 0, "both": 0}
+    highlight_counts = {"quantity": 0, "duplicate_address": 0, "both": 0, "name_pair_unmatched": 0}
+    has_name_pair = bool(cfg.get("name_pair_lookup_file"))
 
     seen_orders = set()
     for i, rec in enumerate(expanded_rows):
@@ -784,8 +804,11 @@ def write_vendor_file(vendor_name, rows, out_path):
                 if not (spec[0] == "field" and spec[1] == "order_date"):
                     cell.number_format = st["number_format"]
 
-        fill = _highlight_fill_for(rec, dup_counts)
-        if fill is QTY_FILL:
+        name_pair_unmatched = has_name_pair and _name_pair_match(vendor_name, cfg, rec) is None
+        fill = _highlight_fill_for(rec, dup_counts, name_pair_unmatched)
+        if fill is UNMATCHED_NAME_FILL:
+            highlight_counts["name_pair_unmatched"] += 1
+        elif fill is QTY_FILL:
             highlight_counts["quantity"] += 1
         elif fill is DUP_FILL:
             highlight_counts["duplicate_address"] += 1
