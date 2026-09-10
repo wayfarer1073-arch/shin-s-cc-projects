@@ -256,6 +256,18 @@ _UNIT_TOKEN_RE = re.compile(r'^(\d+)([가-힣a-zA-Z]+)$')
 _TOTAL_RE = re.compile(r'총\s*(\d+)\s*([가-힣a-zA-Z]+)')
 _BOX_TOTAL_RE = re.compile(r'\((\d+)\s*(?:박스|세트|팩)\)')
 _X_COUNT_RE = re.compile(r'[xX×]\s*(\d+)\s*(?:개(?!입)|세트|박스|팩)')
+_EMBEDDED_MULTIPLIER_RE = re.compile(r'[×xX]\s*([2-9]\d*)\s*(?:개(?!입)|세트|박스|팩)')
+
+
+def _has_embedded_multiplier(matched_option):
+    """정식 옵션명 자체가 이미 "×2세트"처럼 1보다 큰 배수를 포함한 하나의
+    완결된 SKU인지 본다(예: "요거트 30봉×1세트"와 "요거트 30봉×2세트"가
+    각각 별도로 정식 옵션 목록에 등록돼 있는 경우 — 후자는 "2세트짜리 묶음"
+    자체가 하나의 선택지다). 이런 경우엔 그 옵션을 몇 번 골랐는지(판매수량)와
+    옵션 자체의 "×2"를 이중으로 곱하면 안 된다 — 상품명에 그 묶음의 총 개수를
+    설명하는 문구("(총 60봉)")가 같이 있어도, 그건 이미 옵션에 포함된 배수를
+    설명하는 것이지 추가 구매 배수가 아니다."""
+    return bool(_EMBEDDED_MULTIPLIER_RE.search(matched_option))
 
 
 def _detect_multiplier(matched_tokens, raw_text):
@@ -397,9 +409,11 @@ def _apply_option_recalc(vendor_name, cfg, rec):
     if result:
         tokens, matched_option = result
         new_rec["option"] = matched_option
-        multiplier = _detect_multiplier(tokens, match_text)
-
-    if multiplier == 1:
+        if not _has_embedded_multiplier(matched_option):
+            multiplier = _detect_multiplier(tokens, match_text)
+            if multiplier == 1:
+                multiplier = _detect_general_multiplier(combined_text)
+    else:
         multiplier = _detect_general_multiplier(combined_text)
 
     if multiplier > 1:
