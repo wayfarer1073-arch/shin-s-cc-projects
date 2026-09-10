@@ -27,7 +27,10 @@ for _field, _names in _aliases_raw.items():
     for _name in _names:
         HEADER_TO_FIELD[_name.strip()] = _field
 
-_DATE_FORMATS = ("%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일")
+_DATE_FORMATS = (
+    "%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일",
+    "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S",
+)
 
 
 def _find_header_row(ws, max_scan_rows=6, min_fields=3):

@@ -172,19 +172,25 @@ def _best_token_match(text, candidates):
 def _best_validated_match(text, candidates, identity_tokens):
     """_best_token_match_with_tokens와 같지만, 후보의 필수 토큰이 text에
     다 있다는 것뿐 아니라 identity_tokens(식별 단어 집합)가 그 후보에서도
-    확인되는지 같이 본다 — identity 토큰 하나하나가 후보 토큰 중 하나와
-    정확히 같거나 그 후보 토큰의 부분 문자열이면 인정한다("도나스"는
-    "추억의도나스"의 부분 문자열이라 인정 — 정식 옵션명이 브랜드 접두어를
-    붙이는 경우가 흔해서, 원본 옵션이 그 접두어 없이 축약해서 오면 정확히
-    같은 토큰이 아니라는 이유만으로 매칭을 놓치게 된다). 둘 다 만족 못
-    하면 다음으로 구체적인 후보를 계속 시도한다 — 가장 구체적인 후보
-    하나만 보고 포기하면, 상품명에 여러 맛 이름이 같이 있는 경우 엉뚱한
-    맛으로 매칭된 걸 걸러내고도 실제로 맞는 다른 후보를 놓치게 된다."""
+    확인되는지 같이 본다. 후보 쪽은 토큰 집합이 아니라 후보의 원문(payload)
+    자체를 공백·기호 다 지우고 이어붙인 문자열에 대해 부분 문자열로
+    있는지 본다 — 토큰 단위로 비교하면 "배&도라지스틱"(원문, 기호+공백
+    없음)과 "배도라지 스틱"(정식 옵션명, 공백 있음)처럼 똑같은 뜻인데
+    토큰이 갈라지는 지점이 달라서("배도라지"+"스틱" vs "도라지스틱") 놓치는
+    경우가 생긴다. 원문 이어붙인 문자열로 보면 "도라지스틱"이 "...배도라지
+    스틱..."의 부분 문자열로 잡혀 정상 인정된다. 후보 원문이 문자열이
+    아니면(예: 이엑스 "상품"/"상품명" 쌍) 두 값을 합쳐서 같은 방식으로 본다.
+    둘 다 만족 못 하면 다음으로 구체적인 후보를 계속 시도한다 — 가장
+    구체적인 후보 하나만 보고 포기하면, 상품명에 여러 맛 이름이 같이 있는
+    경우 엉뚱한 맛으로 매칭된 걸 걸러내고도 실제로 맞는 다른 후보를
+    놓치게 된다."""
     text = re.sub(r'[\s&+/,.\-_★]+', '', text)
     for tokens, payload in candidates:
         if not all(tok in text for tok in tokens):
             continue
-        if all(any(idt == ct or idt in ct for ct in tokens) for idt in identity_tokens):
+        payload_text = payload if isinstance(payload, str) else " ".join(payload)
+        payload_flat = re.sub(r'[\s&+/,.\-_★]+', '', payload_text)
+        if all(idt in payload_flat for idt in identity_tokens):
             return tokens, payload
     return None
 
@@ -485,7 +491,7 @@ def _expand_multi_select(vendor_name, cfg, rec):
     return out
 
 
-_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션"}
+_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션", "원통"}
 
 
 def _find_option_match(table, option_text, combined_text):
