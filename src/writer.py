@@ -222,6 +222,7 @@ def _best_validated_match(text, candidates, identity_tokens):
     def identity_ok(tokens, payload):
         payload_text = payload if isinstance(payload, str) else " ".join(payload)
         payload_flat = re.sub(r'[\s&+/,.\-_★]+', '', payload_text)
+        payload_flat = _normalize_candy_word(payload_flat)
         return all(idt in payload_flat for idt in identity_tokens)
 
     tied = _collect_tied_top(text, candidates, extra_ok=identity_ok)
@@ -266,7 +267,7 @@ def _load_name_pair_table(vendor_name, cfg):
                 entries = json.load(f)
             items = []
             for e in entries:
-                tokens = _tokenize(e["a"])
+                tokens = _tokenize(_normalize_for_match(e["a"], cfg))
                 if tokens:
                     items.append((tokens, (e["a"], e["b"])))
             items.sort(key=lambda x: sum(len(t) for t in x[0]), reverse=True)
@@ -283,8 +284,10 @@ def _name_pair_match(vendor_name, cfg, rec):
     table = _load_name_pair_table(vendor_name, cfg)
     if not table:
         return None
-    option_text = (rec.get("option") or "").strip()
-    combined_text = f"{rec.get('product_name') or ''} {rec.get('option') or ''}"
+    option_text = _normalize_for_match((rec.get("option") or "").strip(), cfg)
+    combined_text = _normalize_for_match(
+        f"{rec.get('product_name') or ''} {rec.get('option') or ''}", cfg
+    )
     if not combined_text.strip():
         return None
     identity_tokens = {
@@ -292,6 +295,8 @@ def _name_pair_match(vendor_name, cfg, rec):
         if not t[0].isdigit() and t not in _OPTION_BOILERPLATE_TOKENS
     }
     result = _best_validated_match(combined_text, table, identity_tokens)
+    if not result:
+        result = _best_relaxed_match(option_text, table, identity_tokens)
     if not result:
         return None
     _, payload = result
@@ -342,6 +347,17 @@ def _normalize_container_words(s):
     정규식(_BOX_TOTAL_RE, _X_COUNT_RE)은 이미 세 단어를 동등하게 취급하고
     있어 이 정규화와 일관된다."""
     return _CONTAINER_UNIT_RE.sub(r'\g<1>세트', s)
+
+
+_CANDY_SYNONYM_RE = re.compile(r'사탕')
+
+
+def _normalize_candy_word(s):
+    """"사탕"(고유어)과 "캔디"(외래어)는 같은 뜻인데 마켓/참고표마다 표기가
+    갈린다(이엑스 참고표엔 "카스텔리모 레몬사탕"처럼 "사탕"으로 등록돼
+    있는데 실제 카카오 주문서엔 "레몬캔디"처럼 "캔디"로 오는 경우가 많음).
+    "사탕" -> "캔디"로 통일해서 비교한다."""
+    return _CANDY_SYNONYM_RE.sub('캔디', s)
 
 
 _STICK_COUNT_RE = re.compile(r'(\d+)스틱')
@@ -399,6 +415,7 @@ def _normalize_for_match(text, cfg):
     text = _normalize_package_count(text)
     text = _normalize_stick_count(text)
     text = _strip_redundant_trailing_container(text)
+    text = _normalize_candy_word(text)
     return text
 
 
@@ -616,7 +633,7 @@ def _expand_multi_select(vendor_name, cfg, rec):
     return out
 
 
-_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션", "원통", "랜덤발송"}
+_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션", "원통", "랜덤발송", "선물용"}
 
 
 def _find_option_match(table, option_text, combined_text):
