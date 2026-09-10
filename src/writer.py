@@ -150,18 +150,52 @@ def _tokenize(s):
     return {t for t in _TOKEN_RE.findall(s) if not t.isdigit()}
 
 
+def _collect_tied_top(text, candidates, extra_ok=None):
+    """candidates 중 필수 토큰이 전부 text에 있고(extra_ok가 있으면 그것도
+    통과하는) 것들 중 가장 구체적인(토큰 글자수 합이 큰) 그룹을 전부 모아
+    반환한다(동점 여러 개 가능). 하나도 없으면 빈 리스트."""
+    best_score = None
+    tied = []
+    for tokens, payload in candidates:
+        if not all(tok in text for tok in tokens):
+            continue
+        if extra_ok is not None and not extra_ok(tokens, payload):
+            continue
+        score = sum(len(t) for t in tokens)
+        if best_score is None or score > best_score:
+            best_score, tied = score, [(tokens, payload)]
+        elif score == best_score:
+            tied.append((tokens, payload))
+    return tied
+
+
+def _tiebreak(text, tied):
+    """동점 후보가 여럿이면: 1) 원문에 "혼합"이 있으면 그 단어를 포함하는
+    후보를 우선한다(예: "레몬오렌지 혼합캔디사탕"에서 "오렌지"가 우연히
+    부분 문자열로 걸려도, 명시적으로 "혼합"이라고 쓰여 있으면 그게 더
+    신뢰도 높은 신호다). 2) 그래도 여럿이면 후보 토큰 중 원문에서 가장
+    먼저 나타나는 토큰의 위치가 앞선 후보를 고른다(예: "레몬/모로오렌지"
+    처럼 대등하게 나열된 경우 먼저 언급된 쪽을 기본값으로 본다)."""
+    if len(tied) == 1:
+        return tied[0]
+    if "혼합" in text:
+        mixed = [c for c in tied if "혼합" in c[0]]
+        if mixed:
+            tied = mixed
+            if len(tied) == 1:
+                return tied[0]
+    return min(tied, key=lambda c: min(text.find(t) for t in c[0]))
+
+
 def _best_token_match_with_tokens(text, candidates):
     """candidates: [(tokens, payload), ...]. 필수 토큰이 전부 text에 있는 후보 중
     가장 구체적인(토큰 글자수 합이 큰) 것의 (tokens, payload)를 반환. 없으면 None.
-    candidates는 미리 구체적인 순서로 정렬돼 있어야 한다. 공백·기호 차이로
-    매칭이 실패하지 않도록("배&도라지" vs "배도라지") text에서 공백과 흔한
-    연결기호를 제거하고 비교한다(토큰 쪽은 애초에 정규식이 그런 문자를 건너뛰어
-    섞이지 않는다)."""
+    공백·기호 차이로 매칭이 실패하지 않도록("배&도라지" vs "배도라지") text에서
+    공백과 흔한 연결기호를 제거하고 비교한다(토큰 쪽은 애초에 정규식이 그런
+    문자를 건너뛰어 섞이지 않는다). 동점이면 _tiebreak로 하나를 고른다."""
     text = re.sub(r'[\s&+/,.\-_★]+', '', text)
-    for tokens, payload in candidates:
-        if all(tok in text for tok in tokens):
-            return tokens, payload
-    return None
+    tied = _collect_tied_top(text, candidates)
+    return _tiebreak(text, tied) if tied else None
 
 
 def _best_token_match(text, candidates):
@@ -180,19 +214,18 @@ def _best_validated_match(text, candidates, identity_tokens):
     경우가 생긴다. 원문 이어붙인 문자열로 보면 "도라지스틱"이 "...배도라지
     스틱..."의 부분 문자열로 잡혀 정상 인정된다. 후보 원문이 문자열이
     아니면(예: 이엑스 "상품"/"상품명" 쌍) 두 값을 합쳐서 같은 방식으로 본다.
-    둘 다 만족 못 하면 다음으로 구체적인 후보를 계속 시도한다 — 가장
-    구체적인 후보 하나만 보고 포기하면, 상품명에 여러 맛 이름이 같이 있는
-    경우 엉뚱한 맛으로 매칭된 걸 걸러내고도 실제로 맞는 다른 후보를
-    놓치게 된다."""
+    동점이면 _tiebreak로 하나를 고른다 — 가장 구체적인 후보 하나만 보고
+    포기하면, 상품명에 여러 맛 이름이 같이 있는 경우 엉뚱한 맛으로 매칭된
+    걸 걸러내고도 실제로 맞는 다른 후보를 놓치게 된다."""
     text = re.sub(r'[\s&+/,.\-_★]+', '', text)
-    for tokens, payload in candidates:
-        if not all(tok in text for tok in tokens):
-            continue
+
+    def identity_ok(tokens, payload):
         payload_text = payload if isinstance(payload, str) else " ".join(payload)
         payload_flat = re.sub(r'[\s&+/,.\-_★]+', '', payload_text)
-        if all(idt in payload_flat for idt in identity_tokens):
-            return tokens, payload
-    return None
+        return all(idt in payload_flat for idt in identity_tokens)
+
+    tied = _collect_tied_top(text, candidates, extra_ok=identity_ok)
+    return _tiebreak(text, tied) if tied else None
 
 
 def _load_name_pair_table(vendor_name, cfg):
@@ -444,6 +477,34 @@ def _detect_bare_count(text):
 
 
 # ---------------------------------------------------------------------------
+# 같은 단위가 "+"로 반복된 표기 정리: "60포+60포"처럼 완전히 동일한
+# 숫자+단위가 "+"로 반복되면, 이건 서로 다른 구성품의 조합이 아니라 같은
+# 상품을 여러 번 산다는 뜻이다(가공 지침 1번의 "총 120포" 예시 — 60포짜리를
+# 2번). 정식 옵션 목록 매칭 여부와 무관하게 원문 자체에서 판단 가능하며,
+# 매칭시켜서 문구를 바꿀 필요도 없다 — 반복된 부분만 하나로 줄이고 나머지
+# 원문(예: "(원통)")은 그대로 둔 채 판매수량만 반복 횟수만큼 곱한다. 정식
+# 옵션 매칭을 거치지 않으므로 "(원통)"처럼 카탈로그에 없는 포장 설명이
+# 붙어 있어도 원문 그대로 정확히 보존된다(카탈로그의 "60포" 단품과는 다른
+# 포장일 수 있어 억지로 정규화하면 안 된다).
+# ---------------------------------------------------------------------------
+_REPEATED_UNIT_RE = re.compile(r'(\d+[가-힣]+)(\+\1)+')
+
+
+def _collapse_repeated_unit(rec):
+    option_text = rec.get("option") or ""
+    m = _REPEATED_UNIT_RE.search(option_text)
+    if not m:
+        return rec
+    repeated_span = m.group(0)
+    unit = m.group(1)
+    count = repeated_span.count("+") + 1
+    new_rec = dict(rec)
+    new_rec["option"] = option_text.replace(repeated_span, unit, 1)
+    new_rec["quantity"] = (rec.get("quantity") or 1) * count
+    return new_rec
+
+
+# ---------------------------------------------------------------------------
 # 다중 선택 행 분리 (가공 지침 2번): 고객이 "(택N)"으로 서로 다른 옵션 N개를
 # 선택하면, 원본 옵션 필드에 그 N개 선택 내역이 구분자(콤마/슬래시/"선택N:"
 # 표기 등)로 나뉘어 실제로 들어있다. 그 구분된 항목들이 각각 정식 옵션
@@ -491,7 +552,7 @@ def _expand_multi_select(vendor_name, cfg, rec):
     return out
 
 
-_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션", "원통"}
+_OPTION_BOILERPLATE_TOKENS = {"선택", "옵션"}
 
 
 def _find_option_match(table, option_text, combined_text):
@@ -765,6 +826,7 @@ def write_vendor_file(vendor_name, rows, out_path):
     # 그것도 아니면 같은 옵션의 배수인지(수량 재산출)만 확인한다.
     expanded_rows = []
     for rec in rows:
+        rec = _collapse_repeated_unit(rec)
         split_recs = _expand_multi_select(vendor_name, cfg, rec)
         if len(split_recs) > 1:
             expanded_rows.extend(split_recs)
