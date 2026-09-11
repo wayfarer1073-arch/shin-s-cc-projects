@@ -7,6 +7,7 @@ from pathlib import Path
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 # 행 강조 색상: 수량 2개 이상 / 동일 수령인+주소 중복 / 둘 다 해당 시 각각 다른 색으로 구분
 QTY_FILL = PatternFill(fill_type="solid", start_color="FFF9E48B", end_color="FFF9E48B")
@@ -37,7 +38,9 @@ def _build_col_map(ws, cfg):
     """열 번호 -> ("static", 값) | ("combine",) | ("seq",) | ("year"/"month"/"day",)
     | ("shipment_flag",) | ("field", 표준필드명) | ("code",) | ("name_pair", "a"|"b")
     로 매핑한다. 매핑되지 않은 열은 자동으로 채우지 않고 비워둔다(택배사/송장번호
-    등 나중에 수기로 채우는 열)."""
+    등 나중에 수기로 채우는 열). (col_map, dup_cols) 튜플을 반환하며, dup_cols는
+    템플릿에 헤더가 실수로 중복된 탓에 값을 채우지 못한 열 번호 목록이다(호출부가
+    이 열들을 숨김 처리한다)."""
     header_row = cfg["header_row"]
     field_overrides = cfg.get("field_overrides", {})
     static_fields = cfg.get("static_fields", {})
@@ -46,6 +49,7 @@ def _build_col_map(ws, cfg):
     name_pair_columns = cfg.get("name_pair_columns", {})
 
     col_map = {}
+    dup_cols = []
     seen = set()
     for c in range(1, ws.max_column + 1):
         header = ws.cell(row=header_row, column=c).value
@@ -81,13 +85,15 @@ def _build_col_map(ws, cfg):
             continue
 
         # 템플릿에 헤더가 실수로 중복된 열(예: "옵션"이 두 번)이 있으면
-        # 첫 번째 열에만 값을 채우고 나머지는 빈 채로 둔다 — 같은 값이
-        # 여러 열에 중복으로 찍히는 걸 막는다.
+        # 첫 번째 열에만 값을 채우고 나머지는 숨김 처리한다(수식이 열
+        # 위치를 참조하고 있어 템플릿에서 열 자체를 지우진 않음) — 같은
+        # 값이 여러 열에 중복으로 찍히는 걸 막는다.
         if spec in seen:
+            dup_cols.append(c)
             continue
         seen.add(spec)
         col_map[c] = spec
-    return col_map
+    return col_map, dup_cols
 
 
 # ---------------------------------------------------------------------------
@@ -947,7 +953,9 @@ def write_vendor_file(vendor_name, rows, out_path):
     wb = openpyxl.load_workbook(template_path)
     ws = wb.worksheets[0]
 
-    col_map = _build_col_map(ws, cfg)
+    col_map, dup_cols = _build_col_map(ws, cfg)
+    for c in dup_cols:
+        ws.column_dimensions[get_column_letter(c)].hidden = True
     data_start = cfg["data_start_row"]
     styles = _capture_row_style(ws, data_start, ws.max_column)
 
