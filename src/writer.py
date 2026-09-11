@@ -46,6 +46,7 @@ def _build_col_map(ws, cfg):
     name_pair_columns = cfg.get("name_pair_columns", {})
 
     col_map = {}
+    seen = set()
     for c in range(1, ws.max_column + 1):
         header = ws.cell(row=header_row, column=c).value
         if not isinstance(header, str):
@@ -55,27 +56,37 @@ def _build_col_map(ws, cfg):
             continue
 
         if header in static_fields:
-            col_map[c] = ("static", static_fields[header])
+            spec = ("static", static_fields[header])
         elif combine_field and header == combine_field:
-            col_map[c] = ("combine",)
+            spec = ("combine",)
         elif code_column and header == code_column:
-            col_map[c] = ("code",)
+            spec = ("code",)
         elif header in name_pair_columns:
-            col_map[c] = ("name_pair", name_pair_columns[header])
+            spec = ("name_pair", name_pair_columns[header])
         elif header in field_overrides:
-            col_map[c] = ("field", field_overrides[header])
+            spec = ("field", field_overrides[header])
         elif header in _NO_HEADERS:
-            col_map[c] = ("seq",)
+            spec = ("seq",)
         elif header == "년":
-            col_map[c] = ("year",)
+            spec = ("year",)
         elif header == "월":
-            col_map[c] = ("month",)
+            spec = ("month",)
         elif header == "일":
-            col_map[c] = ("day",)
+            spec = ("day",)
         elif header == "배송건수":
-            col_map[c] = ("shipment_flag",)
+            spec = ("shipment_flag",)
         elif header in _HEADER_TO_FIELD:
-            col_map[c] = ("field", _HEADER_TO_FIELD[header])
+            spec = ("field", _HEADER_TO_FIELD[header])
+        else:
+            continue
+
+        # 템플릿에 헤더가 실수로 중복된 열(예: "옵션"이 두 번)이 있으면
+        # 첫 번째 열에만 값을 채우고 나머지는 빈 채로 둔다 — 같은 값이
+        # 여러 열에 중복으로 찍히는 걸 막는다.
+        if spec in seen:
+            continue
+        seen.add(spec)
+        col_map[c] = spec
     return col_map
 
 
