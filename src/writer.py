@@ -115,6 +115,14 @@ _code_tables = {}
 def _normalize_for_code(s):
     s = str(s or "")
     s = re.sub(r'^[\(\[].*?[\)\]]', '', s)
+    # 다른 매칭 로직(_normalize_for_match)과 같은 통일 규칙을 공유한다 —
+    # "10개입"/"10입", "1박스"/"1세트" 같은 같은 뜻 다른 표기 차이 때문에
+    # 상품코드 조회가 실패하지 않도록(cfg가 필요 없는 정규화만 적용).
+    s = _normalize_container_words(s)
+    s = _normalize_package_count(s)
+    s = _normalize_stick_count(s)
+    s = _strip_redundant_trailing_container(s)
+    s = _normalize_candy_word(s)
     s = re.sub(r'[\s"\'/,.\-_★\[\]]+', '', s)
     return s.strip()
 
