@@ -1,7 +1,6 @@
 """정규화된 주문 라인을 협력사별 엑셀 양식(templates/*.xlsx)에 채워 넣는다."""
 import json
 import re
-from collections import Counter
 from copy import copy
 from pathlib import Path
 
@@ -37,16 +36,19 @@ _NO_HEADERS = {"NO", "No.", "No", "no", "번호", "순번"}
 def _build_col_map(ws, cfg):
     """열 번호 -> ("static", 값) | ("combine",) | ("seq",) | ("year"/"month"/"day",)
     | ("shipment_flag",) | ("field", 표준필드명) | ("code",) | ("name_pair", "a"|"b")
-    로 매핑한다. 매핑되지 않은 열은 자동으로 채우지 않고 비워둔다(택배사/송장번호
-    등 나중에 수기로 채우는 열). (col_map, dup_cols) 튜플을 반환하며, dup_cols는
-    템플릿에 헤더가 실수로 중복된 탓에 값을 채우지 못한 열 번호 목록이다(호출부가
-    이 열들을 숨김 처리한다)."""
+    | ("consolidated", 표시문구) | ("group_seq",) 로 매핑한다. 매핑되지 않은 열은
+    자동으로 채우지 않고 비워둔다(택배사/송장번호 등 나중에 수기로 채우는 열).
+    (col_map, dup_cols) 튜플을 반환하며, dup_cols는 템플릿에 헤더가 실수로
+    중복된 탓에 값을 채우지 못한 열 번호 목록이다(호출부가 이 열들을 숨김
+    처리한다)."""
     header_row = cfg["header_row"]
     field_overrides = cfg.get("field_overrides", {})
     static_fields = cfg.get("static_fields", {})
     combine_field = cfg.get("combine_product_option_field")
     code_column = cfg.get("code_column")
     name_pair_columns = cfg.get("name_pair_columns", {})
+    consolidated_col = cfg.get("consolidated_shipping_column")
+    group_seq_col = cfg.get("group_seq_column")
 
     col_map = {}
     dup_cols = []
@@ -65,6 +67,10 @@ def _build_col_map(ws, cfg):
             spec = ("combine",)
         elif code_column and header == code_column:
             spec = ("code",)
+        elif consolidated_col and header == consolidated_col:
+            spec = ("consolidated", consolidated_col)
+        elif group_seq_col and header == group_seq_col:
+            spec = ("group_seq",)
         elif header in name_pair_columns:
             spec = ("name_pair", name_pair_columns[header])
         elif header in field_overrides:
@@ -685,6 +691,43 @@ def _multiplier_for_match(matched_option, tokens, match_text, general_text):
     return multiplier
 
 
+def _expand_box_count_bundle(vendor_name, cfg, rec):
+    """일부 상품(예: 이뮨 "퍼펙트이뮨")은 옵션 텍스트로 맛/종류를 매칭하는
+    게 아니라, "몇 박스를 샀는지"에 따라 본품 + 부속품(쇼핑백 종류는
+    박스 수에 따라 다름, 특정 수량 이상이면 단상자 추가, 옵션에 증정
+    문구가 있으면 증정품 추가)으로 항상 고정된 구성으로 나뉘어야 하는
+    경우가 있다(사용자가 직접 확인해준 지침 — 2026-09-11). cfg["box_
+    count_bundle"]에 그런 규칙이 등록돼 있으면 상품명+옵션에서 박스
+    개수를 판단해 구성요소별로 행을 나눈다. 해당 없으면 [rec] 그대로
+    반환한다."""
+    rule = cfg.get("box_count_bundle")
+    if not rule:
+        return [rec]
+    product_name = rec.get("product_name") or ""
+    option_text = rec.get("option") or ""
+    combined = _normalize_for_match(f"{product_name} {option_text}", cfg)
+    box_count = _detect_general_multiplier(combined)
+    if box_count < 1:
+        box_count = 1
+
+    items = [(rule["unit_product"], box_count)]
+    items.append((rule["bag_single"] if box_count == 1 else rule["bag_multi"], 1))
+    if box_count >= rule.get("box_from_count", 10 ** 9):
+        items.append((rule["box_item"], 1))
+    gift_trigger = rule.get("gift_trigger")
+    if gift_trigger and gift_trigger in option_text:
+        items.append((rule["gift_item"], 1))
+
+    out = []
+    for name, qty in items:
+        new_rec = dict(rec)
+        new_rec["product_name"] = name
+        new_rec["option"] = ""
+        new_rec["quantity"] = qty
+        out.append(new_rec)
+    return out
+
+
 def _expand_variety_set(vendor_name, cfg, rec):
     """일부 상품은 정식 옵션 목록에 "여러 캐릭터/맛을 합친" 콤보 항목이
     있어도 실제로는 항상 "각각 하나씩"을 뜻해서 그 콤보 항목과 매칭하면
@@ -885,7 +928,7 @@ def _capture_row_style(ws, row_idx, max_col):
     return styles
 
 
-def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cfg=None):
+def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cfg=None, group_seq=None):
     kind = kind_spec[0]
     if kind == "seq":
         return seq
@@ -902,6 +945,10 @@ def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cf
         return " ".join(parts)
     if kind == "shipment_flag":
         return 1 if is_first_of_order else None
+    if kind == "consolidated":
+        return kind_spec[1] if is_first_of_order else None
+    if kind == "group_seq":
+        return group_seq if is_first_of_order else None
     if kind == "field":
         return rec.get(kind_spec[1]) or None
     if kind == "code":
@@ -966,7 +1013,11 @@ def write_vendor_file(vendor_name, rows, out_path):
     # 그것도 아니면 같은 옵션의 배수인지(수량 재산출)만 확인한다.
     expanded_rows = []
     for rec in rows:
-        rec = _collapse_repeated_unit(rec)
+        bundle_split = _expand_box_count_bundle(vendor_name, cfg, rec)
+        if len(bundle_split) > 1:
+            expanded_rows.extend(bundle_split)
+            continue
+        rec = _collapse_repeated_unit(bundle_split[0])
         split_recs = _expand_multi_select(vendor_name, cfg, rec)
         if len(split_recs) > 1:
             expanded_rows.extend(split_recs)
@@ -981,20 +1032,33 @@ def write_vendor_file(vendor_name, rows, out_path):
         else:
             expanded_rows.append(_apply_option_recalc(vendor_name, cfg, plus_split[0]))
 
-    dup_counts = Counter(k for k in (_dup_key(r) for r in expanded_rows) if k is not None)
+    # 같은 수령인+주소로 가는 "서로 다른 주문"이 몇 건인지 세야 한다. 한 주문이
+    # 여러 행으로 나뉘는 경우(옵션 분리, 이뮨 같은 구성품 묶음 등) 그 행들은
+    # 전부 같은 주문번호를 공유하므로, 행 수가 아니라 주문번호 개수로 세지
+    # 않으면 한 주문의 부속 행들끼리만 있어도 항상 "중복"으로 잘못 표시된다.
+    dup_key_orders = {}
+    for r in expanded_rows:
+        key = _dup_key(r)
+        if key is None:
+            continue
+        dup_key_orders.setdefault(key, set()).add(r.get("order_id"))
+    dup_counts = {k: len(v) for k, v in dup_key_orders.items()}
     highlight_counts = {"quantity": 0, "duplicate_address": 0, "both": 0, "name_pair_unmatched": 0}
     has_name_pair = bool(cfg.get("name_pair_lookup_file"))
 
     seen_orders = set()
+    group_seq = 0
     for i, rec in enumerate(expanded_rows):
         r = data_start + i
         order_id = rec.get("order_id")
         is_first = order_id not in seen_orders if order_id is not None else True
         if order_id is not None:
             seen_orders.add(order_id)
+        if is_first:
+            group_seq += 1
 
         for c, spec in col_map.items():
-            value = _cell_value_for(spec, rec, i + 1, is_first, vendor_name, cfg)
+            value = _cell_value_for(spec, rec, i + 1, is_first, vendor_name, cfg, group_seq)
             cell = ws.cell(row=r, column=c)
 
             if spec[0] == "field" and spec[1] == "order_date" and value is not None:
