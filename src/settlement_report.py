@@ -1,9 +1,13 @@
 """기간을 지정하면 보관된 주문 원본(data/orders/)에서 해당 브랜드의 모든 주문
 (어느 협력사 것이든)을 모아 정산 리포트 공용 양식(templates/정산_*.xlsx)에 채운다.
 
-지급매입처/배송처(협력사) 컬럼은 주문마다 실제로 분류된 협력사로 채우고,
-관리상품명/매입단가는 브랜드 상품 카탈로그(data/reference/catalog_*.json)에서
-상품명+옵션이 정확히 일치하는 경우에만 채운다 (정확도가 낮은 매칭은 하지 않음).
+배송처 컬럼은 주문마다 실제로 분류된 협력사로 채운다. 지급매입처 컬럼은
+브랜드 상품 카탈로그(data/reference/catalog_*.json)에 그 상품의 pay_vendor가
+등록돼 있으면 그걸 쓰고(같은 협력사라도 실제 매입 대금을 지급하는 곳이
+따로 있는 경우가 있음 — 예: 투데이넛 상품의 매입처는 해맑음푸드), 없으면
+배송처와 같다고 보고 분류된 협력사로 채운다. 관리상품명/매입단가도 같은
+카탈로그에서 상품명+옵션이 정확히 일치하는 경우에만 채운다 (정확도가 낮은
+매칭은 하지 않음).
 그 외 우리 데이터로 확인 불가능한 값(카탈로그에 없는 상품의 원가/이익 등)은
 공란으로 남긴다 — 사람이 템플릿에 같이 들어있는 참고 시트를 보고 채우게 된다.
 """
@@ -93,9 +97,18 @@ def generate_settlement_report(
             ws.cell(row=r, column=COL["recv_day"], value=od.day)
         ws.cell(row=r, column=COL["sales_channel"], value=rec.get("shop_name"))
 
+        catalog_entry = catalog_lookup.get((rec.get("product_name"), rec.get("option") or ""))
+
         vendor = rec.get("vendor")
         if vendor:
-            ws.cell(row=r, column=COL["pay_vendor"], value=vendor)
+            # 배송처(ship_office)는 실제로 물건을 포장·발송하는 협력사(예:
+            # 투데이넛)를 그대로 쓰지만, 지급매입처(pay_vendor)는 그 협력사가
+            # 아니라 실제로 대금을 지급하는 매입처가 따로 있는 경우가 있다
+            # (예: 투데이넛 상품은 카탈로그상 매입처가 "해맑음푸드"). 카탈로그에
+            # 그 상품의 pay_vendor가 등록돼 있으면 그걸 쓰고, 없으면 배송처와
+            # 같다고 보고 vendor로 채운다.
+            pay_vendor = (catalog_entry.get("pay_vendor") if catalog_entry else None) or vendor
+            ws.cell(row=r, column=COL["pay_vendor"], value=pay_vendor)
             ws.cell(row=r, column=COL["ship_office"], value=vendor)
 
         ws.cell(row=r, column=COL["order_id"], value=order_id)
@@ -106,7 +119,6 @@ def generate_settlement_report(
         ws.cell(row=r, column=COL["product_name"], value=rec.get("product_name"))
         ws.cell(row=r, column=COL["option"], value=rec.get("option"))
 
-        catalog_entry = catalog_lookup.get((rec.get("product_name"), rec.get("option") or ""))
         if catalog_entry:
             ws.cell(row=r, column=COL["managed_name"], value=catalog_entry.get("managed_name"))
             unit_cost = catalog_entry.get("unit_cost")
