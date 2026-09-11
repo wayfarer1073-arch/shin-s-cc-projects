@@ -9,7 +9,12 @@
   상품들은 브랜드 구분 없이 모두 이플코리아 상품으로 분류")에 따라, 브랜드와 무관하게
   data/reference/options_이플코리아.json(이플코리아 3PL 실보관 재고 + 정식 옵션명
   목록)에 있는 상품은 카탈로그의 과거 배송처 값과 무관하게 무조건 이플코리아로
-  분류한다. 브랜드별 카탈로그 조회보다 먼저 확인한다.
+  분류한다. 브랜드별 카탈로그 조회보다 먼저 확인한다. 단, data/reference/stock_
+  이플코리아.json(사용자가 제공한 3PL 재고 스냅샷)에서 재고합계가 0인 상품은 이
+  전역 배정에서 제외한다(사용자 확인, 2026-09-11: 재고 0인 상품은 주문이 들어와도
+  이플코리아가 아니라 다른 협력사 지침을 참조해야 함) — 그 경우 브랜드별 카탈로그
+  조회(과거 배송처 이력)로 넘어가고, 거기서도 못 찾으면 미분류로 남아 수동 확인
+  대상이 된다.
 """
 import json
 import re
@@ -25,6 +30,7 @@ _loaded = {}
 _MATCH_MIN_LEN = 8  # 정규화한 이름이 이보다 짧으면 오탐 위험이 커서 매칭에서 제외
 _EP_KOREA_VENDOR = "이플코리아"
 _EP_KOREA_OPTIONS_FILE = "data/reference/options_이플코리아.json"
+_EP_KOREA_STOCK_FILE = "data/reference/stock_이플코리아.json"
 _ep_korea_names = None
 
 
@@ -36,13 +42,26 @@ def _normalize_name(s):
     return s.strip()
 
 
+def _load_ep_korea_zero_stock_names():
+    stock_path = BASE_DIR / _EP_KOREA_STOCK_FILE
+    if not stock_path.exists():
+        return set()
+    with open(stock_path, encoding="utf-8") as f:
+        items = json.load(f)
+    return {_normalize_name(it["name"]) for it in items if it.get("stock_total") == 0}
+
+
 def _load_ep_korea_names():
     global _ep_korea_names
     if _ep_korea_names is None:
         with open(BASE_DIR / _EP_KOREA_OPTIONS_FILE, encoding="utf-8") as f:
             items = json.load(f)
+        zero_stock = _load_ep_korea_zero_stock_names()
         names = [_normalize_name(it) for it in items]
-        _ep_korea_names = [n for n in names if len(n) >= _MATCH_MIN_LEN]
+        _ep_korea_names = [
+            n for n in names
+            if len(n) >= _MATCH_MIN_LEN and n not in zero_stock
+        ]
     return _ep_korea_names
 
 

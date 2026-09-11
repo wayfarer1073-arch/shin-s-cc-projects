@@ -584,6 +584,33 @@ def _detect_bare_count(text):
 
 
 # ---------------------------------------------------------------------------
+# 한성로직스: 상품명/옵션명을 항상 옵션 텍스트로 통일하고, "×N단위" 배수는
+# 표시상 "×1단위"로 고정한 뒤 그 배수를 판매수량에 반영한다(사용자가 직접
+# 확인해준 지침 — 2026-09-11: 예) "선택: 예향 한입방울떡 1kg×2개" ->
+# "선택: 예향 한입방울떡 1kg×1개", 수량 1 -> 2).
+# ---------------------------------------------------------------------------
+_X_MULTIPLIER_RE = re.compile(r'[×xX](\d+)(개|봉|입|포|세트|박스|팩)')
+
+
+def _normalize_x_multiplier(vendor_name, cfg, rec):
+    if not cfg.get("normalize_x_multiplier"):
+        return rec
+    option_text = rec.get("option") or ""
+    if not option_text.strip():
+        return rec
+    new_rec = dict(rec)
+    m = _X_MULTIPLIER_RE.search(option_text)
+    if m:
+        count = int(m.group(1))
+        unit = m.group(2)
+        option_text = option_text[:m.start()] + f"×1{unit}" + option_text[m.end():]
+        new_rec["quantity"] = (rec.get("quantity") or 1) * count
+    new_rec["option"] = option_text
+    new_rec["product_name"] = option_text
+    return new_rec
+
+
+# ---------------------------------------------------------------------------
 # 같은 단위가 "+"로 반복된 표기 정리: "60포+60포"처럼 완전히 동일한
 # 숫자+단위가 "+"로 반복되면, 이건 서로 다른 구성품의 조합이 아니라 같은
 # 상품을 여러 번 산다는 뜻이다(가공 지침 1번의 "총 120포" 예시 — 60포짜리를
@@ -1039,6 +1066,7 @@ def write_vendor_file(vendor_name, rows, out_path):
     # 그것도 아니면 같은 옵션의 배수인지(수량 재산출)만 확인한다.
     expanded_rows = []
     for rec in rows:
+        rec = _normalize_x_multiplier(vendor_name, cfg, rec)
         bundle_split = _expand_box_count_bundle(vendor_name, cfg, rec)
         if len(bundle_split) > 1:
             expanded_rows.extend(bundle_split)
