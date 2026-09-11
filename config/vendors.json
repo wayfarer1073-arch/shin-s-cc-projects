@@ -104,7 +104,12 @@
       "template_file": "templates/마더네스트.xlsx",
       "template_family": "flat_generic",
       "header_row": 1,
-      "data_start_row": 2
+      "data_start_row": 2,
+      "field_overrides": {
+        "하이픈포함 수령인연락처1": "receiver_phone_hyphenated"
+      },
+      "file_brand_override": "JM",
+      "_note": "사용자 확인(2026-09-11): 실제 주문 브랜드 분류(MH 등)와 무관하게 출력 파일명은 항상 마더네스트만 JM으로 표기. '하이픈포함 수령인연락처1' 열은 수령인연락처1 값을 xxx-xxxx-xxxx 형태로 채움."
     },
     "굿즈코리아": {
       "brand_keywords": [],

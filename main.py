@@ -56,7 +56,8 @@ def run(input_paths, out_dir):
             by_brand.setdefault(rec.get("brand") or "JM", []).append(rec)
 
         for brand, brand_rows in by_brand.items():
-            out_path = out_dir / f"{run_date_compact}_{vendor}_{brand}.xlsx"
+            file_brand = VENDORS[vendor].get("file_brand_override") or brand
+            out_path = out_dir / f"{run_date_compact}_{vendor}_{file_brand}.xlsx"
             _, highlight_counts = write_vendor_file(vendor, brand_rows, out_path)
             written.append(out_path)
             for k, v in highlight_counts.items():

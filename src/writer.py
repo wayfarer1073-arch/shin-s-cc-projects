@@ -928,6 +928,22 @@ def _capture_row_style(ws, row_idx, max_col):
     return styles
 
 
+_PHONE_DIGITS_RE = re.compile(r'\D+')
+
+
+def _format_phone_hyphenated(phone):
+    """"01012345678"처럼 하이픈 없이 오는 전화번호를 "010-1234-5678"
+    (일반적인 xxx-xxxx-xxxx 표기)로 바꾼다. 11자리(휴대폰)는 3-4-4,
+    10자리(구형 번호/지역번호 포함 유선)는 3-3-4로 나눈다. 그 외
+    자릿수는 형식을 판단할 수 없어 원본 그대로 둔다."""
+    digits = _PHONE_DIGITS_RE.sub("", phone or "")
+    if len(digits) == 11:
+        return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+    if len(digits) == 10:
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    return phone or None
+
+
 def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cfg=None, group_seq=None):
     kind = kind_spec[0]
     if kind == "seq":
@@ -950,6 +966,8 @@ def _cell_value_for(kind_spec, rec, seq, is_first_of_order, vendor_name=None, cf
     if kind == "group_seq":
         return group_seq if is_first_of_order else None
     if kind == "field":
+        if kind_spec[1] == "receiver_phone_hyphenated":
+            return _format_phone_hyphenated(rec.get("receiver_phone"))
         return rec.get(kind_spec[1]) or None
     if kind == "code":
         return _code_for(vendor_name, cfg, rec)
