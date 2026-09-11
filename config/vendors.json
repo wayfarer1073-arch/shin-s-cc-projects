@@ -252,7 +252,9 @@
       "summary_row": 2,
       "header_row": 3,
       "data_start_row": 4,
-      "_note": "원본 업로드 파일이 손상되어 LibreOffice로 복구 후 생성함."
+      "field_overrides": {"상품코드": "channel_product_no"},
+      "_note": "원본 업로드 파일이 손상되어 LibreOffice로 복구 후 생성함.",
+      "_code_note": "상품코드 열은 원주문서의 '채널상품번호'를 그대로 채운다(사용자 확인, 2026-09-11)."
     },
     "듀오랩": {
       "brand_keywords": [],

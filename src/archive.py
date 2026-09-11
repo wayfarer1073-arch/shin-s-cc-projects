@@ -14,7 +14,7 @@ _FIELDS = [
     "order_id", "order_date", "product_name", "option", "quantity",
     "receiver_name", "receiver_phone", "address", "zipcode",
     "delivery_message", "courier", "tracking_no", "shop_name", "payment_amount",
-    "brand", "_source_file", "_source_row",
+    "brand", "channel_product_no", "_source_file", "_source_row",
 ]
 
 
