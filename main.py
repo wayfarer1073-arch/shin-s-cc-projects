@@ -7,7 +7,7 @@
 """
 import argparse
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from src.normalize import read_market_file
@@ -16,33 +16,73 @@ from src.writer import VENDORS, write_vendor_file, write_review_file
 from src.summary import compute_summary
 from src.dashboard import render_dashboard_html
 from src.reconcile import check_no_omission, collect_special_notes, collect_missing_info
-from src.archive import archive_orders
+from src.archive import archive_orders, load_orders
 
 
-def run(input_paths, out_dir):
+def _parse_iso_date(s):
+    return datetime.strptime(s, "%Y-%m-%d").date() if isinstance(s, str) else s
+
+
+def run(input_paths, out_dir, brand_override=None):
+    """input_paths를 읽어 협력사별로 분류하고 양식을 작성한다. brand_override를
+    주면(원본 파일명이 "{YYMMDD} {사업부} {매출처} 주문서.xlsx" 규칙을 안 따라
+    사업부를 자동으로 못 얻는 파일 등) 읽은 모든 줄의 사업부를 그 값으로
+    강제 지정한다.
+
+    오늘 이미 다른 파일을 처리해서 보관본이 있는 경우, 방금 읽은 내용만으로
+    양식을 다시 쓰면 먼저 처리한 내용이 사라진다. 그래서 보관(archive_orders,
+    같은 날짜 보관본에 이어붙임) 이후 그날 보관된 전체 내용을 다시 불러와
+    양식 작성·요약·대시보드는 항상 "오늘 지금까지 처리한 전체"를 기준으로
+    한다."""
     all_rows = []
     for path in input_paths:
         rows = read_market_file(path)
+        if brand_override:
+            for rec in rows:
+                rec["brand"] = brand_override
         all_rows.extend(rows)
-        print(f"[읽음] {Path(path).name}: {len(rows)}건")
+        print(f"[읽음] {Path(path).name}: {len(rows)}건" + (f" (사업부={brand_override}로 수동 지정)" if brand_override else ""))
 
+    # 이번 처리분만(리뷰 파일의 "매칭 후보" 표시용 — 보관본을 거치면 후보
+    # 목록은 안 남으므로 이번 회차 결과를 따로 보관해둔다).
     by_vendor = {}
-    unclassified = []
-    ambiguous = []
+    this_run_unclassified = []
+    this_run_ambiguous = []
     for rec in all_rows:
         matches = classify_vendor(rec, VENDORS)
         if len(matches) == 1:
             by_vendor.setdefault(matches[0], []).append(rec)
         elif len(matches) == 0:
-            unclassified.append(rec)
+            this_run_unclassified.append(rec)
         else:
             rec["_ambiguous_matches"] = matches
-            ambiguous.append(rec)
+            this_run_ambiguous.append(rec)
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     run_date = date.today().isoformat()
     run_date_compact = run_date.replace("-", "")
+
+    archive_path = archive_orders(by_vendor, this_run_unclassified, this_run_ambiguous, run_date)
+    print(f"[보관] 이번 처리 {len(all_rows)}건 -> {archive_path}")
+
+    # 오늘 보관된 전체(이번 처리분 포함)를 다시 불러와 양식 작성·요약·대조의
+    # 기준으로 삼는다 — 오늘 여러 번 나눠 올려도 매번 "오늘 전체"가 반영됨.
+    day_rows = load_orders(run_date, run_date, archive_dir=archive_path.parent)
+    all_rows = []
+    by_vendor = {}
+    unclassified = []
+    ambiguous = []
+    for r in day_rows:
+        r = dict(r)
+        r["order_date"] = _parse_iso_date(r.get("order_date"))
+        all_rows.append(r)
+        if r["match_status"] == "classified":
+            by_vendor.setdefault(r["vendor"], []).append(r)
+        elif r["match_status"] == "unclassified":
+            unclassified.append(r)
+        else:
+            ambiguous.append(r)
 
     written = []
     highlight_totals = {"quantity": 0, "duplicate_address": 0, "both": 0, "name_pair_unmatched": 0}
@@ -79,9 +119,6 @@ def run(input_paths, out_dir):
         review_path = out_dir / f"확인필요_{run_date}.xlsx"
         write_review_file(unclassified, ambiguous, review_path)
         print(f"[확인 필요] 미분류 {len(unclassified)}건, 중복매칭 {len(ambiguous)}건 -> {review_path}")
-
-    archive_path = archive_orders(by_vendor, unclassified, ambiguous, run_date)
-    print(f"[보관] 주문 원본 라인 {len(all_rows)}건 -> {archive_path}")
 
     # --- 원본 대조: 누락 건 및 특이사항 조사 ---
     reconciliation = check_no_omission(all_rows, by_vendor, unclassified, ambiguous)

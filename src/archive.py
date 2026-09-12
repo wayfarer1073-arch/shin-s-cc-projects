@@ -15,6 +15,7 @@ _FIELDS = [
     "receiver_name", "receiver_phone", "address", "zipcode",
     "delivery_message", "courier", "tracking_no", "shop_name", "payment_amount",
     "brand", "channel_product_no", "_source_file", "_source_row",
+    "_ambiguous_matches",
 ]
 
 
@@ -28,8 +29,12 @@ def _serialize(rec, vendor, match_status):
 
 
 def archive_orders(by_vendor, unclassified, ambiguous, run_date, archive_dir=ARCHIVE_DIR):
-    """그날 처리한 모든 주문 라인(분류 결과 포함)을 archive_dir/{run_date}.json에 저장한다.
-    같은 날짜에 다시 실행하면 그날 파일을 덮어쓴다(하루 1파일 = 그날의 최종 처리 결과)."""
+    """그날 처리한 주문 라인(분류 결과 포함)을 archive_dir/{run_date}.json에 저장한다.
+    같은 날짜에 이미 보관된 내용이 있으면 그 위에 이어붙인다(하루에 여러 원본
+    파일을 나눠 처리하는 경우 — 예: 스마트스토어분 + 카카오분 — 먼저 처리한
+    내용이 사라지지 않도록). 단, 같은 원본 파일의 같은 줄(_source_file +
+    _source_row)이 이미 보관돼 있으면 중복으로 또 쌓지 않는다(같은 파일을
+    실수로 두 번 올려도 안전)."""
     rows = []
     for vendor, recs in by_vendor.items():
         rows.extend(_serialize(r, vendor, "classified") for r in recs)
@@ -39,8 +44,17 @@ def archive_orders(by_vendor, unclassified, ambiguous, run_date, archive_dir=ARC
     archive_dir = Path(archive_dir)
     archive_dir.mkdir(parents=True, exist_ok=True)
     out_path = archive_dir / f"{run_date}.json"
+
+    existing_rows = []
+    if out_path.exists():
+        with open(out_path, encoding="utf-8") as f:
+            existing_rows = json.load(f)
+    seen = {(r.get("_source_file"), r.get("_source_row")) for r in existing_rows}
+    new_rows = [r for r in rows if (r.get("_source_file"), r.get("_source_row")) not in seen]
+
+    combined_rows = existing_rows + new_rows
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(rows, f, ensure_ascii=False, indent=2)
+        json.dump(combined_rows, f, ensure_ascii=False, indent=2)
     return out_path
 
 
