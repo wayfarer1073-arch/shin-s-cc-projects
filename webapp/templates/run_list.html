@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>전체 처리 이력</h1>
+  {% if recent %}
+  <table>
+    <tr><th>날짜</th><th>전체 주문</th><th>미분류</th><th>중복매칭</th><th></th></tr>
+    {% for r in recent %}
+    <tr>
+      <td>{{ r.run_date }}</td>
+      <td>{{ r.summary.total_order_count if r.summary else "-" }}</td>
+      <td>{{ r.summary.unclassified_count if r.summary else "-" }}</td>
+      <td>{{ r.summary.ambiguous_count if r.summary else "-" }}</td>
+      <td><a href="/runs/{{ r.run_date }}" class="btn secondary">결과 보기</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">아직 처리한 주문서가 없습니다.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}오픈마켓 주문서 처리{% endblock %}</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    margin: 0;
+    background: #f6f5fb;
+    color: #1c1c1c;
+  }
+  header {
+    background: #2c2840;
+    color: #fff;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header a { color: #fff; text-decoration: none; font-weight: 700; font-size: 15px; }
+  header nav a { color: #cfc9ec; font-weight: 500; font-size: 13px; margin-left: 18px; }
+  header nav a:hover { color: #fff; }
+  main {
+    max-width: 960px;
+    margin: 24px auto;
+    padding: 0 20px 60px 20px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e5e2f4;
+    border-radius: 10px;
+    padding: 20px 22px;
+    margin-bottom: 18px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px 0; color: #14121f; }
+  h2 { font-size: 15px; margin: 0 0 12px 0; color: #2c2840; }
+  .muted { color: #757088; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { border-bottom: 1px solid #edebf7; padding: 8px 10px; text-align: left; }
+  th { color: #4b3fa8; font-weight: 700; background: #f5f3fb; }
+  tr:hover td { background: #faf9ff; }
+  a.btn, button.btn {
+    display: inline-block;
+    background: #6b5bd6;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  a.btn:hover, button.btn:hover { background: #5a4bc4; }
+  a.btn.secondary { background: #efedfa; color: #4b3fa8; }
+  a.btn.secondary:hover { background: #e4e0f7; }
+  .stat-row { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0; }
+  .stat {
+    background: #f5f3fb;
+    border-radius: 8px;
+    padding: 10px 16px;
+    min-width: 110px;
+  }
+  .stat .num { font-size: 20px; font-weight: 700; color: #2c2840; }
+  .stat .label { font-size: 12px; color: #757088; }
+  select, input[type="file"] {
+    font-size: 13.5px;
+    padding: 7px 9px;
+    border: 1px solid #d8d4ec;
+    border-radius: 6px;
+    background: #fff;
+  }
+  .badge {
+    display: inline-block;
+    background: #e9e5fb;
+    color: #4b3fa8;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 1px 8px;
+    border-radius: 10px;
+  }
+  .empty { color: #999; font-style: italic; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">오픈마켓 주문서 처리</a>
+  <nav>
+    <a href="/">업로드</a>
+    <a href="/runs">처리 이력</a>
+  </nav>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>
