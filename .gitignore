@@ -3,3 +3,4 @@ __pycache__/
 output/*.xlsx
 output/*.json
 output/*.html
+output/*.pdf
