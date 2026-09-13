@@ -1,42 +1,61 @@
 {% extends "base.html" %}
+{% block active_nav %}upload{% endblock %}
 {% block content %}
-<div class="card">
-  <h1>주문서 업로드</h1>
-  <p class="muted">오픈마켓에서 내려받은 원본 주문서(엑셀)를 올리면, 협력사별로 나누고 각자 양식에 맞춰 작성합니다. 오늘 이미 다른 파일을 처리했어도 내용이 사라지지 않고 이어서 합산됩니다.</p>
-  <form action="/process" method="post" enctype="multipart/form-data" style="margin-top:16px">
-    <div style="margin-bottom:12px">
-      <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px">주문서 파일 (여러 개 선택 가능)</label>
-      <input type="file" name="files" multiple required accept=".xlsx,.xls">
+<h1>주문서 업로드</h1>
+<p class="muted" style="margin-bottom:22px;">오픈마켓에서 내려받은 원본 주문서(엑셀)를 올리면, 협력사별로 나누고 각자 양식에 맞춰 작성합니다. 오늘 이미 다른 파일을 처리했어도 내용이 사라지지 않고 이어서 합산됩니다.</p>
+
+<form action="/process" method="post" enctype="multipart/form-data">
+  <div class="card">
+    <h2 style="color:var(--cyan-700);">1. 주문서 파일 선택</h2>
+    <input type="file" name="files" id="files-input" multiple required accept=".xlsx,.xls" class="visually-hidden">
+    <label for="files-input" class="dropzone">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-500)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17.5 9.5 4.5 4.5 0 0 1 17 18H7z"/><path d="M12 12.2v5.8"/><path d="M9.3 14.7 12 12l2.7 2.7"/></svg>
+      <div class="dz-title">클릭해서 주문서 파일을 선택하세요</div>
+      <div class="dz-sub">xlsx, xls 지원 · 여러 개 선택 가능</div>
+    </label>
+  </div>
+
+  <div class="card">
+    <h2 style="color:var(--cyan-700);">2. 사업부 선택</h2>
+    <div class="pill-group">
+      <input type="radio" id="brand-auto" name="brand" value="" checked>
+      <label for="brand-auto" class="pill">자동 감지</label>
+      {% for b in brands %}
+      <input type="radio" id="brand-{{ b }}" name="brand" value="{{ b }}">
+      <label for="brand-{{ b }}" class="pill">{{ b }}</label>
+      {% endfor %}
     </div>
-    <div style="margin-bottom:16px">
-      <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px">사업부(브랜드)</label>
-      <select name="brand">
-        <option value="">자동 감지 (파일 이름 규칙을 따르는 경우)</option>
-        {% for b in brands %}
-        <option value="{{ b }}">{{ b }} — 직접 지정</option>
-        {% endfor %}
-      </select>
-      <div class="muted" style="margin-top:4px">파일 이름이 정해진 규칙("YYMMDD 사업부 매출처 주문서.xlsx")과 다르면 사업부를 자동으로 알 수 없습니다. 그런 경우 여기서 직접 골라주세요(카카오톡 선물하기 배송 목록 등).</div>
-    </div>
-    <button type="submit" class="btn">업로드 및 처리 시작</button>
-  </form>
-</div>
+    <div class="muted" style="margin-top:12px;">파일 이름이 정해진 규칙("YYMMDD 사업부 매출처 주문서.xlsx")과 다르면 사업부를 자동으로 알 수 없습니다. 그런 경우 여기서 직접 골라주세요(카카오톡 선물하기 배송 목록 등).</div>
+  </div>
+
+  <button type="submit" class="btn" style="height:48px; padding:0 26px; margin-bottom:26px;">
+    처리 시작
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+  </button>
+</form>
 
 <div class="card">
   <h2>최근 처리 내역</h2>
   {% if recent %}
-  <table>
-    <tr><th>날짜</th><th>전체 주문</th><th>미분류</th><th>중복매칭</th><th></th></tr>
+  <div style="display:flex; flex-direction:column; gap:8px;">
     {% for r in recent %}
-    <tr>
-      <td>{{ r.run_date }}</td>
-      <td>{{ r.summary.total_order_count if r.summary else "-" }}</td>
-      <td>{{ r.summary.unclassified_count if r.summary else "-" }}</td>
-      <td>{{ r.summary.ambiguous_count if r.summary else "-" }}</td>
-      <td><a href="/runs/{{ r.run_date }}" class="btn secondary">결과 보기</a></td>
-    </tr>
+    {% set need = ((r.summary.unclassified_count or 0) + (r.summary.ambiguous_count or 0)) if r.summary else 0 %}
+    <div class="row-card" style="border:1px solid var(--border); flex-wrap:wrap;">
+      <div style="width:140px; font-weight:700; font-size:13.5px;">{{ r.run_date }}</div>
+      <div style="display:flex; gap:8px; flex:1;">
+        <span class="badge">총 {{ r.summary.total_order_count if r.summary else "-" }}건</span>
+      </div>
+      {% if r.summary %}
+        {% if need > 0 %}
+        <span class="badge flag">확인 필요 {{ need }}건</span>
+        {% else %}
+        <span class="badge ok">확인 완료</span>
+        {% endif %}
+      {% endif %}
+      <a href="/runs/{{ r.run_date }}" class="btn secondary" style="padding:8px 14px; font-size:12.5px;">상세보기</a>
+    </div>
     {% endfor %}
-  </table>
+  </div>
   {% else %}
   <div class="empty">아직 처리한 주문서가 없습니다.</div>
   {% endif %}

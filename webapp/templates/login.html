@@ -1,22 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card" style="max-width:380px; margin:60px auto;">
+<div class="card" style="width:380px; box-shadow: 0 1px 2px rgba(20,30,40,0.04), 0 12px 32px rgba(20,30,40,0.07);">
+  <div style="width:46px; height:46px; border-radius:13px; background:var(--cyan-500); display:flex; align-items:center; justify-content:center; margin-bottom:18px;">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4.5 7.5 12 12l7.5-4.5"/><path d="M12 12v9"/></svg>
+  </div>
   <h1>로그인</h1>
-  <p class="muted">오픈마켓 주문서 처리 시스템</p>
+  <p class="muted" style="margin-bottom:20px;">오픈마켓 주문서 처리 시스템에 오신 것을 환영합니다.</p>
 
   {% if error %}<div class="note error">{{ error }}</div>{% endif %}
 
-  <form method="post" action="/login" style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+  <form method="post" action="/login" style="display:flex; flex-direction:column; gap:14px;">
     <input type="hidden" name="next" value="{{ next }}">
     <label>
-      <div class="muted" style="margin-bottom:4px;">아이디</div>
-      <input type="text" name="username" required autofocus style="width:100%; padding:9px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:14px;">
+      <div style="margin-bottom:6px;">아이디</div>
+      <input type="text" name="username" required autofocus class="field" style="width:100%;">
     </label>
     <label>
-      <div class="muted" style="margin-bottom:4px;">비밀번호</div>
-      <input type="password" name="password" required style="width:100%; padding:9px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:14px;">
+      <div style="margin-bottom:6px;">비밀번호</div>
+      <input type="password" name="password" required class="field" style="width:100%;">
     </label>
-    <button type="submit" class="btn" style="margin-top:6px;">로그인</button>
+    <button type="submit" class="btn" style="width:100%; height:46px; margin-top:6px;">로그인</button>
   </form>
+
+  <div style="margin-top:18px; display:flex; gap:9px; padding:12px 13px; background:var(--cyan-50); border-radius:10px;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-700)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:1px;"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r="0.6" fill="var(--cyan-700)" stroke="none"/></svg>
+    <span style="font-size:12px; color:var(--text-600); line-height:1.5;">아이디나 비밀번호를 잊으셨다면 관리자에게 문의해주세요.</span>
+  </div>
 </div>
 {% endblock %}

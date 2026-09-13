@@ -4,115 +4,189 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}오픈마켓 주문서 처리{% endblock %}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<!-- active_nav: {% block active_nav %}upload{% endblock %} -->
 <style>
+  :root {
+    --bg: oklch(99% 0.002 240);
+    --surface: oklch(100% 0 0);
+    --surface-2: oklch(97.5% 0.004 240);
+    --border: oklch(91% 0.006 240);
+    --border-strong: oklch(85% 0.008 240);
+    --text-900: oklch(22% 0.02 250);
+    --text-600: oklch(46% 0.018 250);
+    --text-400: oklch(62% 0.014 250);
+    --cyan-700: oklch(48% 0.11 210);
+    --cyan-600: oklch(58% 0.12 210);
+    --cyan-500: oklch(68% 0.12 210);
+    --cyan-100: oklch(94% 0.035 210);
+    --cyan-50: oklch(97.5% 0.016 210);
+    --flag-600: oklch(48% 0.14 240);
+    --flag-100: oklch(94% 0.045 235);
+    --amber-600: oklch(58% 0.15 65);
+    --amber-100: oklch(95% 0.05 80);
+    --green-600: oklch(52% 0.13 150);
+    --green-100: oklch(94% 0.05 150);
+    --red-600: oklch(55% 0.19 25);
+  }
   * { box-sizing: border-box; }
-  body {
-    font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
-    margin: 0;
-    background: #f6f5fb;
-    color: #1c1c1c;
-  }
-  header {
-    background: #2c2840;
-    color: #fff;
-    padding: 14px 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  header a { color: #fff; text-decoration: none; font-weight: 700; font-size: 15px; }
-  header nav a { color: #cfc9ec; font-weight: 500; font-size: 13px; margin-left: 18px; }
-  header nav a:hover { color: #fff; }
-  main {
-    max-width: 960px;
-    margin: 24px auto;
-    padding: 0 20px 60px 20px;
-  }
-  .card {
-    background: #fff;
-    border: 1px solid #e5e2f4;
-    border-radius: 10px;
-    padding: 20px 22px;
-    margin-bottom: 18px;
-  }
-  h1 { font-size: 20px; margin: 0 0 4px 0; color: #14121f; }
-  h2 { font-size: 15px; margin: 0 0 12px 0; color: #2c2840; }
-  .muted { color: #757088; font-size: 13px; }
+  body { margin: 0; font-family: "Noto Sans KR", system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; color: var(--text-900); background: var(--bg); }
+  a { color: var(--cyan-700); text-decoration: none; }
+  a:hover { color: var(--cyan-600); }
+
+  .layout { display: flex; min-height: 100vh; }
+
+  .sidebar { width: 240px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px 14px; position: sticky; top: 0; height: 100vh; }
+  .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 22px; }
+  .sidebar-brand .mark { width: 34px; height: 34px; border-radius: 9px; background: var(--cyan-500); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sidebar-brand .eyebrow { font-size: 10.5px; color: var(--text-400); font-weight: 500; letter-spacing: 0.02em; }
+  .sidebar-brand .title { font-size: 14px; font-weight: 700; line-height: 1.2; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+  .nav-row { display: flex; align-items: center; gap: 11px; height: 42px; padding: 0 12px; border-radius: 9px; cursor: pointer; color: var(--text-600); font-weight: 500; }
+  .nav-row:hover { background: var(--surface-2); }
+  .nav-row svg { flex-shrink: 0; }
+  .nav-row span.label { font-size: 13.5px; flex: 1; }
+  .nav-row.active { background: var(--cyan-100); color: var(--cyan-700); font-weight: 700; }
+  .nav-row .role-tag { font-size: 10px; font-weight: 700; color: var(--text-400); background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; }
+  .sidebar-divider { height: 1px; background: var(--border); margin: 10px 10px; }
+  .sidebar-spacer { flex: 1; }
+  .sidebar-user { display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid var(--border); }
+  .sidebar-user .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--cyan-100); color: var(--cyan-700); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .sidebar-user .name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sidebar-user .role { font-size: 11px; color: var(--text-400); }
+  .sidebar-user a.logout { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-400); flex-shrink: 0; }
+  .sidebar-user a.logout:hover { background: var(--surface-2); color: var(--text-600); }
+
+  main.content { flex: 1; padding: 40px 56px 60px; min-width: 0; }
+  main.content-standalone { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; min-height: 100vh; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; margin-bottom: 18px; }
+  h1 { font-size: 22px; font-weight: 800; margin: 0 0 6px 0; color: var(--text-900); }
+  h2 { font-size: 14px; font-weight: 700; margin: 0 0 14px 0; color: var(--text-900); }
+  .muted { color: var(--text-600); font-size: 13px; line-height: 1.6; }
+
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  th, td { border-bottom: 1px solid #edebf7; padding: 8px 10px; text-align: left; }
-  th { color: #4b3fa8; font-weight: 700; background: #f5f3fb; }
-  tr:hover td { background: #faf9ff; }
+  th, td { border-bottom: 1px solid var(--border); padding: 9px 10px; text-align: left; }
+  th { color: var(--cyan-700); font-weight: 700; background: var(--cyan-50); font-size: 12px; }
+  tr:hover td { background: var(--surface-2); }
+
   a.btn, button.btn {
-    display: inline-block;
-    background: #6b5bd6;
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 9px 16px;
-    font-size: 13.5px;
-    font-weight: 600;
-    text-decoration: none;
-    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    background: var(--cyan-500); color: #fff; border: none; border-radius: 9px;
+    padding: 10px 18px; font-size: 13.5px; font-weight: 700; font-family: inherit;
+    text-decoration: none; cursor: pointer;
   }
-  a.btn:hover, button.btn:hover { background: #5a4bc4; }
-  a.btn.secondary { background: #efedfa; color: #4b3fa8; }
-  a.btn.secondary:hover { background: #e4e0f7; }
+  a.btn:hover, button.btn:hover { background: var(--cyan-600); color: #fff; }
+  a.btn.secondary, button.btn.secondary { background: var(--surface); color: var(--cyan-700); border: 1px solid var(--cyan-500); }
+  a.btn.secondary:hover, button.btn.secondary:hover { background: var(--cyan-50); color: var(--cyan-700); }
+
   .stat-row { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0; }
-  .stat {
-    background: #f5f3fb;
-    border-radius: 8px;
-    padding: 10px 16px;
-    min-width: 110px;
+  .stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; min-width: 110px; }
+  .stat.flag { background: var(--flag-100); border-color: oklch(88% 0.05 235); }
+  .stat .num { font-size: 22px; font-weight: 800; color: var(--text-900); }
+  .stat.flag .num { color: var(--flag-600); }
+  .stat .label { font-size: 12px; color: var(--text-400); font-weight: 600; margin-top: 4px; }
+  .stat.flag .label { color: var(--flag-600); }
+
+  .field, select, input[type="text"], input[type="password"] {
+    font-size: 13.5px; font-family: inherit; padding: 9px 12px; height: 40px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-900);
   }
-  .stat .num { font-size: 20px; font-weight: 700; color: #2c2840; }
-  .stat .label { font-size: 12px; color: #757088; }
-  select, input[type="file"] {
-    font-size: 13.5px;
-    padding: 7px 9px;
-    border: 1px solid #d8d4ec;
-    border-radius: 6px;
-    background: #fff;
+  input[type="file"] { font-size: 13px; font-family: inherit; }
+  label { font-size: 12.5px; font-weight: 600; color: var(--text-600); }
+
+  .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+  .pill-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill-group input[type="radio"] { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .pill-group label.pill {
+    display: flex; align-items: center; justify-content: center; height: 36px; padding: 0 18px;
+    border-radius: 9px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); color: var(--text-600); background: var(--surface);
   }
-  .badge {
-    display: inline-block;
-    background: #e9e5fb;
-    color: #4b3fa8;
-    font-size: 11.5px;
-    font-weight: 700;
-    padding: 1px 8px;
-    border-radius: 10px;
-  }
-  .empty { color: #999; font-style: italic; padding: 20px 0; text-align: center; }
-  .note {
-    background: #fff7e6;
-    border-left: 4px solid #e0a94a;
-    padding: 10px 14px;
-    margin: 12px 0;
-    font-size: 13px;
-    border-radius: 0 6px 6px 0;
-  }
-  .note.error { background: #fdeaea; border-left-color: #d16060; }
-  .diff-num { font-size: 22px; font-weight: 700; }
-  .diff-num.up { color: #1c7a52; }
-  .diff-num.down { color: #b8433a; }
+  .pill-group input[type="radio"]:checked + label.pill { background: var(--cyan-500); border-color: var(--cyan-500); color: #fff; }
+  .pill-group input[type="radio"]:focus-visible + label.pill { outline: 2px solid var(--cyan-500); outline-offset: 2px; }
+
+  .dropzone { border: 2px dashed var(--border-strong); border-radius: 13px; padding: 30px 20px; text-align: center; background: var(--surface-2); display: block; cursor: pointer; }
+  .dropzone:hover { border-color: var(--cyan-500); }
+  .dropzone .dz-title { font-size: 14px; font-weight: 700; margin: 8px 0 4px; }
+  .dropzone .dz-sub { font-size: 12.5px; color: var(--text-400); }
+
+  .badge { display: inline-block; background: var(--cyan-100); color: var(--cyan-700); font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; }
+  .badge.role-admin { color: var(--amber-600); background: var(--amber-100); }
+  .badge.flag { color: var(--flag-600); background: var(--flag-100); }
+  .badge.ok { color: var(--green-600); background: var(--green-100); }
+
+  .empty { color: var(--text-400); font-style: italic; padding: 20px 0; text-align: center; }
+  .note { background: var(--flag-100); border-left: 4px solid var(--flag-600); padding: 11px 15px; margin: 12px 0; font-size: 13px; border-radius: 0 8px 8px 0; color: var(--text-900); }
+  .note.error { background: var(--amber-100); border-left-color: var(--amber-600); }
+  .diff-num { font-size: 22px; font-weight: 800; }
+  .diff-num.up { color: var(--green-600); }
+  .diff-num.down { color: var(--red-600); }
+
+  .row-card { display: flex; align-items: center; gap: 16px; padding: 13px 14px; border-radius: 10px; border: 1px solid transparent; }
+  .row-card:hover { background: var(--surface-2); }
+  .icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 </style>
 </head>
 <body>
-<header>
-  <a href="/">오픈마켓 주문서 처리</a>
-  <nav>
-    {% if current_user %}
-    <a href="/">업로드</a>
-    <a href="/runs">처리 이력</a>
-    <a href="/reference">참고 자료 관리</a>
-    {% if current_user.is_admin %}<a href="/users">사용자 관리</a>{% endif %}
-    <span style="color:#948dc2; margin-left:18px; font-size:13px;">{{ current_user.display_name }}님</span>
-    <a href="/logout">로그아웃</a>
-    {% endif %}
-  </nav>
-</header>
-<main>
-{% block content %}{% endblock %}
-</main>
+{% if current_user %}
+{% set active = self.active_nav() %}
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="mark">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4.5 7.5 12 12l7.5-4.5"/><path d="M12 12v9"/>
+        </svg>
+      </div>
+      <div>
+        <div class="eyebrow">오픈마켓</div>
+        <div class="title">주문서 처리 시스템</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-row {% if active == 'upload' %}active{% endif %}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17.5 9.5 4.5 4.5 0 0 1 17 18H7z"/><path d="M12 12.2v5.8"/><path d="M9.3 14.7 12 12l2.7 2.7"/></svg>
+        <span class="label">업로드</span>
+      </a>
+      <a href="/runs" class="nav-row {% if active == 'history' %}active{% endif %}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3.2 2"/></svg>
+        <span class="label">처리 이력</span>
+      </a>
+      <a href="/reference" class="nav-row {% if active == 'reference' %}active{% endif %}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8V6"/><path d="M5 12v6c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-6"/></svg>
+        <span class="label">참고 자료 관리</span>
+      </a>
+      {% if current_user.is_admin %}
+      <div class="sidebar-divider"></div>
+      <a href="/users" class="nav-row {% if active == 'users' %}active{% endif %}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3.3 19a5.7 5.7 0 0 1 11.4 0"/><circle cx="17.3" cy="9" r="2.3"/><path d="M16.2 13.3a4.6 4.6 0 0 1 4.5 4.6"/></svg>
+        <span class="label">사용자 관리</span>
+        <span class="role-tag">관리자</span>
+      </a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-user">
+      <div class="avatar">{{ current_user.display_name[:1] }}</div>
+      <div style="flex:1; min-width:0;">
+        <div class="name">{{ current_user.display_name }}</div>
+        <div class="role">{{ "관리자" if current_user.is_admin else "직원" }}</div>
+      </div>
+      <a href="/logout" class="logout" title="로그아웃">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path d="M13 8l4 4-4 4"/><path d="M17 12H9"/></svg>
+      </a>
+    </div>
+  </aside>
+  <main class="content">
+{% else %}
+<main class="content-standalone">
+{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+{% if current_user %}
+</div>
+{% endif %}
 </body>
 </html>

@@ -1,25 +1,37 @@
 {% extends "base.html" %}
+{% block active_nav %}reference{% endblock %}
 {% block content %}
-<div class="card">
-  <h1>참고 자료 관리</h1>
-  <p class="muted">주문을 처리할 때 참고하는 자료(재고 현황, 정식 옵션명 목록, 상품코드 참고표 등)를 새 엑셀로 교체할 수 있습니다. 업로드하면 바로 반영되지 않고, 먼저 내용을 확인한 뒤 "이 내용으로 교체" 버튼을 눌러야 반영됩니다. 교체 전 기존 내용은 자동으로 백업됩니다.</p>
-</div>
+<h1>참고 자료 관리</h1>
+<p class="muted" style="margin-bottom:22px;">재고 현황표, 정식 옵션명, 상품코드 같은 참고 자료를 엑셀로 올려서 최신 내용으로 바꿀 수 있어요. 업로드하면 바로 반영되지 않고, 먼저 내용을 확인한 뒤 "이 내용으로 교체" 버튼을 눌러야 반영됩니다. 교체 전 기존 내용은 자동으로 백업됩니다.</p>
 
 {% for t in tables %}
 <div class="card">
-  <h2>{{ t.label }}</h2>
-  <div class="stat-row" style="margin-bottom:10px">
-    <div class="stat"><div class="num">{{ t.count }}</div><div class="label">현재 등록 건수</div></div>
-    <div class="stat"><div class="num" style="font-size:14px">{{ t.updated or "없음" }}</div><div class="label">마지막 갱신</div></div>
+  <div style="display:flex; gap:14px;">
+    <div style="width:38px; height:38px; border-radius:10px; background:var(--cyan-100); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-700)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8V6"/><path d="M5 12v6c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-6"/></svg>
+    </div>
+    <div style="flex:1;">
+      <h2 style="margin-bottom:4px;">{{ t.label }}</h2>
+      <div class="muted" style="margin-bottom:2px;">현재 {{ t.count }}건 · {{ t.updated or "갱신 이력 없음" }}</div>
+    </div>
   </div>
-  <div class="muted" style="margin-bottom:10px">{{ t.help }}</div>
-  <div style="margin-bottom:14px">
-    <a href="/reference/{{ t.id }}/download" class="btn secondary">현재 내용 엑셀로 다운로드</a>
-    <span class="muted" style="margin-left:8px">받은 엑셀을 그대로 고쳐서 아래에 다시 올리면 됩니다.</span>
+
+  <div class="muted" style="margin:12px 0;">{{ t.help }}</div>
+
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+    <a href="/reference/{{ t.id }}/download" class="btn secondary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>
+      현재 내용 엑셀로 다운로드
+    </a>
+    <span class="muted">받은 엑셀을 그대로 고쳐서 아래에 다시 올리면 됩니다.</span>
   </div>
-  <form action="/reference/{{ t.id }}/preview" method="post" enctype="multipart/form-data">
+
+  <form action="/reference/{{ t.id }}/preview" method="post" enctype="multipart/form-data" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
     <input type="file" name="file" required accept=".xlsx,.xls">
-    <button type="submit" class="btn">새 파일 올려서 확인하기</button>
+    <button type="submit" class="btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17.5 9.5 4.5 4.5 0 0 1 17 18H7z"/><path d="M12 12.2v5.8"/><path d="M9.3 14.7 12 12l2.7 2.7"/></svg>
+      새 파일 올려서 확인하기
+    </button>
   </form>
 </div>
 {% endfor %}
