@@ -25,6 +25,7 @@ import main as pipeline
 from src.archive import ARCHIVE_DIR
 from src import reference_tables as ref
 from webapp import auth
+from webapp import board
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / "output"
@@ -66,7 +67,12 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 def render(request: Request, name: str, context: dict | None = None, status_code: int = 200):
     context = dict(context or {})
     username = request.session.get("username")
-    context["current_user"] = auth.find_user(username) if username else None
+    current_user = auth.find_user(username) if username else None
+    context["current_user"] = current_user
+    # 사이드바의 "최근 게시글" 미리보기는 로그인한 모든 페이지에 나오므로
+    # 여기서 한 번에 채워준다(매 라우트마다 따로 넣을 필요 없게).
+    if current_user:
+        context["board_latest"] = board.latest_by_tag()
     return templates.TemplateResponse(request, name, context, status_code=status_code)
 
 
@@ -155,10 +161,15 @@ def run_detail(request: Request, run_date: str):
 
 
 @app.get("/runs", response_class=HTMLResponse)
-def run_list(request: Request):
+def run_list(request: Request, start: str = "", end: str = ""):
     run_dates = _list_run_dates()
+    # run_date는 "YYYY-MM-DD" 형식이라 문자열 비교만으로 날짜 범위 필터가 된다.
+    if start:
+        run_dates = [d for d in run_dates if d >= start]
+    if end:
+        run_dates = [d for d in run_dates if d <= end]
     recent = [{"run_date": d, "summary": _run_summary(d)} for d in run_dates]
-    return render(request, "run_list.html", {"recent": recent})
+    return render(request, "run_list.html", {"recent": recent, "start": start, "end": end})
 
 
 @app.get("/download/{filename}")
@@ -378,3 +389,30 @@ def users_reset_password(request: Request, target_username: str, new_password: s
     except ValueError as e:
         return render(request, "users.html", {"users": auth.list_users(), "error": str(e)}, status_code=400)
     return RedirectResponse(url="/users", status_code=303)
+
+
+# --- 사내 게시판 (이슈/공지/잡담) ------------------------------------------
+
+@app.get("/board", response_class=HTMLResponse)
+def board_list(request: Request):
+    return render(request, "board.html", {"posts": board.list_posts(), "tags": board.TAGS, "error": None})
+
+
+@app.post("/board/create")
+def board_create(
+    request: Request,
+    tag: str = Form(...),
+    title: str = Form(...),
+    body: str = Form(...),
+):
+    username = request.session.get("username")
+    user = auth.find_user(username)
+    try:
+        board.create_post(tag, title, body, author=user["display_name"])
+    except ValueError as e:
+        return render(
+            request, "board.html",
+            {"posts": board.list_posts(), "tags": board.TAGS, "error": str(e)},
+            status_code=400,
+        )
+    return RedirectResponse(url="/board", status_code=303)

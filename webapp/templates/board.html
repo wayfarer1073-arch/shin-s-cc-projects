@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block active_nav %}board{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <h1>게시판</h1>
+  <span class="info-tip" tabindex="0">!
+    <span class="tip-bubble">업무 중 발생한 이슈, 공지사항, 가벼운 이야기를 팀원들과 공유하는 공간입니다. 제목은 50자, 내용은 200자 이내로 작성해주세요.</span>
+  </span>
+</div>
+
+<div class="card">
+  <h2>새 글 작성</h2>
+  {% if error %}<div class="note error">{{ error }}</div>{% endif %}
+  <form method="post" action="/board/create" style="display:flex; flex-direction:column; gap:14px;">
+    <div class="pill-group">
+      {% for t in tags %}
+      <input type="radio" id="tag-{{ t }}" name="tag" value="{{ t }}" {% if loop.first %}checked{% endif %}>
+      <label for="tag-{{ t }}" class="pill tag-pill-{{ t }}">{{ t }}</label>
+      {% endfor %}
+    </div>
+    <label>
+      <div style="margin-bottom:6px;">제목 (50자 이내)</div>
+      <input type="text" name="title" required maxlength="50" class="field" style="width:100%;" placeholder="제목을 입력하세요">
+    </label>
+    <label>
+      <div style="margin-bottom:6px;">내용 (200자 이내)</div>
+      <textarea name="body" required maxlength="200" class="field" style="width:100%; height:90px; resize:vertical; font-family:inherit; padding-top:9px;" placeholder="내용을 입력하세요"></textarea>
+    </label>
+    <button type="submit" class="btn" style="align-self:flex-start;">등록</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>전체 게시글</h2>
+  {% if posts %}
+  <div style="display:flex; flex-direction:column; gap:10px;">
+    {% for p in posts %}
+    <div style="border:1px solid var(--border); border-radius:10px; padding:14px 16px;">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+        <span class="badge tag-{{ p.tag }}">{{ p.tag }}</span>
+        <span style="font-size:14px; font-weight:700; flex:1;">{{ p.title }}</span>
+        <span class="muted" style="font-size:11.5px;">{{ p.author }} · {{ p.created_at }}</span>
+      </div>
+      <div style="font-size:13px; color:var(--text-600); line-height:1.6; white-space:pre-wrap;">{{ p.body }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">아직 등록된 글이 없습니다.</div>
+  {% endif %}
+</div>
+
+<style>
+  #tag-이슈:checked + label.tag-pill-이슈 { background: var(--red-600); border-color: var(--red-600); color:#fff; }
+  #tag-공지:checked + label.tag-pill-공지 { background: var(--notice-600); border-color: var(--notice-600); color:#fff; }
+  #tag-잡담:checked + label.tag-pill-잡담 { background: var(--cyan-500); border-color: var(--cyan-500); color:#fff; }
+</style>
+{% endblock %}

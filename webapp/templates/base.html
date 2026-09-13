@@ -28,15 +28,21 @@
     --green-600: oklch(52% 0.13 150);
     --green-100: oklch(94% 0.05 150);
     --red-600: oklch(55% 0.19 25);
+    --notice-600: oklch(72% 0.19 128);
+    --notice-100: oklch(94% 0.06 128);
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: "Noto Sans KR", system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; color: var(--text-900); background: var(--bg); }
   a { color: var(--cyan-700); text-decoration: none; }
   a:hover { color: var(--cyan-600); }
 
-  .layout { display: flex; min-height: 100vh; }
+  .layout { min-height: 100vh; }
 
-  .sidebar { width: 240px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px 14px; position: sticky; top: 0; height: 100vh; }
+  /* 사이드바는 position:fixed로 뷰포트에 고정한다 - 이전에 sticky를 쓸 때
+     본문이 길어지면 스크롤을 따라 같이 움직이는 버그가 있었다. fixed는
+     스크롤과 무관하게 항상 화면 왼쪽에 고정되고, 본문(main.content)에
+     같은 폭만큼 margin-left를 줘서 겹치지 않게 한다. */
+  .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px 14px; position: fixed; top: 0; left: 0; height: 100vh; overflow-y: auto; z-index: 10; }
   .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 22px; }
   .sidebar-brand .mark { width: 34px; height: 34px; border-radius: 9px; background: var(--cyan-500); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .sidebar-brand .eyebrow { font-size: 10.5px; color: var(--text-400); font-weight: 500; letter-spacing: 0.02em; }
@@ -57,13 +63,25 @@
   .sidebar-user a.logout { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-400); flex-shrink: 0; }
   .sidebar-user a.logout:hover { background: var(--surface-2); color: var(--text-600); }
 
-  main.content { flex: 1; padding: 40px 56px 60px; min-width: 0; }
-  main.content-standalone { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; min-height: 100vh; }
+  main.content { margin-left: 240px; padding: 40px 56px 60px; min-width: 0; }
+  main.content-standalone { display: flex; align-items: center; justify-content: center; padding: 24px; min-height: 100vh; }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; margin-bottom: 18px; }
   h1 { font-size: 22px; font-weight: 800; margin: 0 0 6px 0; color: var(--text-900); }
   h2 { font-size: 14px; font-weight: 700; margin: 0 0 14px 0; color: var(--text-900); }
   .muted { color: var(--text-600); font-size: 13px; line-height: 1.6; }
+
+  .page-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 22px; }
+  .page-heading h1 { margin: 0; }
+  .info-tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-400); font-size: 11px; font-weight: 800; font-style: normal; cursor: help; flex-shrink: 0; }
+  .info-tip:hover, .info-tip:focus { color: var(--cyan-700); border-color: var(--cyan-500); outline: none; }
+  .info-tip .tip-bubble {
+    visibility: hidden; opacity: 0; position: absolute; top: 130%; left: 0; z-index: 30; width: 300px;
+    background: var(--text-900); color: #fff; font-size: 12px; font-weight: 500; line-height: 1.6;
+    padding: 11px 13px; border-radius: 9px; box-shadow: 0 10px 24px rgba(20,30,40,0.18);
+    transition: opacity .12s ease; pointer-events: none;
+  }
+  .info-tip:hover .tip-bubble, .info-tip:focus .tip-bubble { visibility: visible; opacity: 1; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { border-bottom: 1px solid var(--border); padding: 9px 10px; text-align: left; }
@@ -116,6 +134,20 @@
   .badge.role-admin { color: var(--amber-600); background: var(--amber-100); }
   .badge.flag { color: var(--flag-600); background: var(--flag-100); }
   .badge.ok { color: var(--green-600); background: var(--green-100); }
+  .badge.tag-이슈 { color: var(--red-600); background: oklch(95% 0.04 25); }
+  .badge.tag-공지 { color: oklch(38% 0.12 128); background: var(--notice-100); }
+  .badge.tag-잡담 { color: var(--cyan-700); background: var(--cyan-100); }
+
+  .tag-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tag-dot.tag-이슈 { background: var(--red-600); }
+  .tag-dot.tag-공지 { background: var(--notice-600); }
+  .tag-dot.tag-잡담 { background: var(--cyan-500); }
+
+  .sidebar-board { padding: 10px 10px 4px; }
+  .sidebar-board-title { font-size: 10.5px; font-weight: 700; color: var(--text-400); letter-spacing: 0.02em; margin-bottom: 6px; padding: 0 2px; }
+  .board-mini-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-radius: 6px; color: var(--text-600); }
+  .board-mini-row:hover { background: var(--surface-2); color: var(--text-900); }
+  .board-mini-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .empty { color: var(--text-400); font-style: italic; padding: 20px 0; text-align: center; }
   .note { background: var(--flag-100); border-left: 4px solid var(--flag-600); padding: 11px 15px; margin: 12px 0; font-size: 13px; border-radius: 0 8px 8px 0; color: var(--text-900); }
@@ -158,6 +190,10 @@
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8V6"/><path d="M5 12v6c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-6"/></svg>
         <span class="label">참고 자료 관리</span>
       </a>
+      <a href="/board" class="nav-row {% if active == 'board' %}active{% endif %}">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 15.5c0 1.1-.9 2-2 2H8l-3.5 3V6.5c0-1.1.9-2 2-2h11c1.1 0 2 .9 2 2v9z"/><path d="M7.5 8.5h9M7.5 12h6"/></svg>
+        <span class="label">게시판</span>
+      </a>
       {% if current_user.is_admin %}
       <div class="sidebar-divider"></div>
       <a href="/users" class="nav-row {% if active == 'users' %}active{% endif %}">
@@ -167,6 +203,19 @@
       </a>
       {% endif %}
     </nav>
+    {% if board_latest %}
+    <div class="sidebar-board">
+      <div class="sidebar-board-title">최근 게시글</div>
+      {% for tag in ["이슈", "공지", "잡담"] %}
+      {% if board_latest[tag] %}
+      <a href="/board" class="board-mini-row">
+        <span class="tag-dot tag-{{ tag }}"></span>
+        <span class="board-mini-title">{{ board_latest[tag].title }}</span>
+      </a>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
     <div class="sidebar-spacer"></div>
     <div class="sidebar-user">
       <div class="avatar">{{ current_user.display_name[:1] }}</div>

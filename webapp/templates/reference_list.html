@@ -1,8 +1,12 @@
 {% extends "base.html" %}
 {% block active_nav %}reference{% endblock %}
 {% block content %}
-<h1>참고 자료 관리</h1>
-<p class="muted" style="margin-bottom:22px;">재고 현황표, 정식 옵션명, 상품코드 같은 참고 자료를 엑셀로 올려서 최신 내용으로 바꿀 수 있어요. 업로드하면 바로 반영되지 않고, 먼저 내용을 확인한 뒤 "이 내용으로 교체" 버튼을 눌러야 반영됩니다. 교체 전 기존 내용은 자동으로 백업됩니다.</p>
+<div class="page-heading">
+  <h1>참고 자료 관리</h1>
+  <span class="info-tip" tabindex="0">!
+    <span class="tip-bubble">재고 현황표, 정식 옵션명, 상품코드 같은 참고 자료를 엑셀로 올려서 최신 내용으로 바꿀 수 있어요. 업로드하면 바로 반영되지 않고, 먼저 내용을 확인한 뒤 "이 내용으로 교체" 버튼을 눌러야 반영됩니다. 교체 전 기존 내용은 자동으로 백업됩니다.</span>
+  </span>
+</div>
 
 {% for t in tables %}
 <div class="card">
