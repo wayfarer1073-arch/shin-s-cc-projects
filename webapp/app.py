@@ -11,7 +11,7 @@ import io
 import json
 import tempfile
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -493,8 +493,19 @@ def users_reset_password(request: Request, target_username: str, new_password: s
 # --- 사내 게시판 (이슈/공지/잡담) ------------------------------------------
 
 @app.get("/board", response_class=HTMLResponse)
-def board_list(request: Request):
-    return render(request, "board.html", {"posts": board.list_posts(), "tags": board.TAGS, "error": None})
+def board_list(request: Request, tag: str = "", start: str = "", end: str = ""):
+    posts = board.list_posts(tag=tag or None, start_date=start or None, end_date=end or None)
+    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    return render(
+        request,
+        "board.html",
+        {
+            "posts": posts, "tags": board.TAGS, "error": None,
+            "active_tag": tag, "start": start, "end": end,
+            "today": today, "yesterday": yesterday,
+        },
+    )
 
 
 @app.post("/board/create")

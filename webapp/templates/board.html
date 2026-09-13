@@ -4,7 +4,7 @@
 <div class="page-heading">
   <h1>게시판</h1>
   <span class="info-tip" tabindex="0">!
-    <span class="tip-bubble">업무 중 발생한 이슈, 공지사항, 가벼운 이야기를 팀원들과 공유하는 공간입니다. 제목은 50자, 내용은 200자 이내로 작성해주세요.</span>
+    <span class="tip-bubble">업무 중 발생한 이슈, 공지사항, 가벼운 이야기를 팀원들과 공유하는 공간입니다. 제목은 50자, 내용은 200자 이내로 작성해주세요. 글은 작성일로부터 30일이 지나면 자동으로 삭제됩니다.</span>
   </span>
 </div>
 
@@ -34,6 +34,49 @@
     </label>
     <button type="submit" class="btn" style="align-self:flex-start;">등록</button>
   </form>
+</div>
+
+{% set is_custom_range = (start or end) and not (start == today and end == today) and not (start == yesterday and end == yesterday) %}
+<div class="card">
+  <div style="margin-bottom:14px;">
+    <div class="muted" style="margin-bottom:8px;">태그</div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a href="/board?start={{ start }}&end={{ end }}" class="filter-tab {% if not active_tag %}active{% endif %}">전체</a>
+      {% for t in tags %}
+      <a href="/board?tag={{ t }}&start={{ start }}&end={{ end }}" class="filter-tab {% if active_tag == t %}active{% endif %}">{{ t }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  <div>
+    <div class="muted" style="margin-bottom:8px;">기간</div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <a href="/board?tag={{ active_tag }}&start={{ today }}&end={{ today }}" class="filter-tab {% if start == today and end == today %}active{% endif %}">오늘</a>
+      <a href="/board?tag={{ active_tag }}&start={{ yesterday }}&end={{ yesterday }}" class="filter-tab {% if start == yesterday and end == yesterday %}active{% endif %}">어제</a>
+      <button type="button" id="period-toggle-btn" class="filter-tab {% if is_custom_range %}active{% endif %}">기간 선택</button>
+      {% if start or end %}
+      <a href="/board?tag={{ active_tag }}" class="filter-tab" style="color:var(--text-400);">전체 기간</a>
+      {% endif %}
+    </div>
+
+    <div id="period-panel" style="{% if not is_custom_range %}display:none;{% endif %} margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+      <form method="get" action="/board">
+        <input type="hidden" name="tag" value="{{ active_tag }}">
+        <input type="hidden" name="start" id="range-start-input" value="{{ start }}">
+        <input type="hidden" name="end" id="range-end-input" value="{{ end }}">
+        <div style="display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start;">
+          <div id="range-calendar" style="width:min(270px, 100%);"></div>
+          <div style="display:flex; flex-direction:column; gap:12px; padding-top:2px;">
+            <div>
+              <div class="muted" style="margin-bottom:4px;">선택한 기간</div>
+              <div id="range-label" style="font-size:14px; font-weight:700;">전체 기간</div>
+            </div>
+            <div class="muted" style="max-width:220px;">달력에서 시작일을 클릭하고 종료일을 클릭하세요. 같은 날짜를 두 번 클릭하면 하루만 선택됩니다.</div>
+            <button type="submit" class="btn" style="padding:9px 16px; align-self:flex-start;">적용</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <div class="card">
@@ -85,6 +128,125 @@
   }
   wireCounter("post-title", "title-counter", 50);
   wireCounter("post-body", "body-counter", 200);
+})();
+
+(function () {
+  var toggleBtn = document.getElementById("period-toggle-btn");
+  var panel = document.getElementById("period-panel");
+  if (toggleBtn && panel) {
+    toggleBtn.addEventListener("click", function () {
+      panel.style.display = (panel.style.display === "none") ? "block" : "none";
+    });
+  }
+
+  var calendarEl = document.getElementById("range-calendar");
+  var startInput = document.getElementById("range-start-input");
+  var endInput = document.getElementById("range-end-input");
+  var label = document.getElementById("range-label");
+  if (!calendarEl || !startInput || !endInput || !label) return;
+
+  function parseISO(s) {
+    if (!s) return null;
+    var parts = s.split("-").map(Number);
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  function fmt(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return y + "-" + m + "-" + day;
+  }
+
+  var selStart = parseISO(startInput.value);
+  var selEnd = parseISO(endInput.value);
+  var viewRef = selEnd || selStart || new Date();
+  var viewYear = viewRef.getFullYear();
+  var viewMonth = viewRef.getMonth();
+
+  function updateLabel() {
+    if (selStart && selEnd) {
+      label.textContent = (fmt(selStart) === fmt(selEnd)) ? fmt(selStart) : (fmt(selStart) + " ~ " + fmt(selEnd));
+    } else if (selStart) {
+      label.textContent = fmt(selStart) + " ~ (종료일 선택)";
+    } else {
+      label.textContent = "전체 기간";
+    }
+    startInput.value = selStart ? fmt(selStart) : "";
+    endInput.value = selEnd ? fmt(selEnd) : "";
+  }
+
+  function inRange(d) {
+    if (!selStart) return false;
+    var end = selEnd || selStart;
+    var lo = selStart <= end ? selStart : end;
+    var hi = selStart <= end ? end : selStart;
+    return d >= lo && d <= hi;
+  }
+
+  function onDayClick(d) {
+    if (!selStart || (selStart && selEnd)) {
+      selStart = d;
+      selEnd = null;
+    } else if (fmt(d) === fmt(selStart)) {
+      selEnd = d;
+    } else if (d < selStart) {
+      selEnd = selStart;
+      selStart = d;
+    } else {
+      selEnd = d;
+    }
+    updateLabel();
+    render();
+  }
+
+  var weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+
+  function render() {
+    var first = new Date(viewYear, viewMonth, 1);
+    var startWeekday = first.getDay();
+    var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+    var html = "";
+    html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">';
+    html += '<button type="button" data-nav="-1" style="width:28px;height:28px;border:1px solid var(--border);background:var(--surface);border-radius:7px;cursor:pointer;color:var(--text-600);">‹</button>';
+    html += '<div style="font-size:13.5px;font-weight:700;">' + viewYear + "년 " + (viewMonth + 1) + "월</div>";
+    html += '<button type="button" data-nav="1" style="width:28px;height:28px;border:1px solid var(--border);background:var(--surface);border-radius:7px;cursor:pointer;color:var(--text-600);">›</button>';
+    html += "</div>";
+    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:11px;color:var(--text-400);font-weight:700;text-align:center;margin-bottom:4px;">';
+    weekdays.forEach(function (w) { html += "<div>" + w + "</div>"; });
+    html += "</div>";
+    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+    for (var i = 0; i < startWeekday; i++) html += "<div></div>";
+    for (var day = 1; day <= daysInMonth; day++) {
+      var d = new Date(viewYear, viewMonth, day);
+      var selected = inRange(d);
+      var isEndpoint = (selStart && fmt(d) === fmt(selStart)) || (selEnd && fmt(d) === fmt(selEnd));
+      var bg = "transparent", color = "var(--text-900)", weight = "500";
+      if (selected) { bg = "var(--cyan-100)"; color = "var(--cyan-700)"; }
+      if (isEndpoint) { bg = "var(--cyan-500)"; color = "#fff"; weight = "700"; }
+      html += '<div data-day="' + fmt(d) + '" style="height:30px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:' + weight + ';border-radius:7px;cursor:pointer;background:' + bg + ";color:" + color + ';">' + day + "</div>";
+    }
+    html += "</div>";
+    calendarEl.innerHTML = html;
+
+    calendarEl.querySelectorAll("[data-nav]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        viewMonth += parseInt(btn.dataset.nav, 10);
+        if (viewMonth < 0) { viewMonth = 11; viewYear -= 1; }
+        if (viewMonth > 11) { viewMonth = 0; viewYear += 1; }
+        render();
+      });
+    });
+    calendarEl.querySelectorAll("[data-day]").forEach(function (cell) {
+      cell.addEventListener("click", function () {
+        var parts = cell.dataset.day.split("-").map(Number);
+        onDayClick(new Date(parts[0], parts[1] - 1, parts[2]));
+      });
+    });
+  }
+
+  updateLabel();
+  render();
 })();
 </script>
 {% endblock %}

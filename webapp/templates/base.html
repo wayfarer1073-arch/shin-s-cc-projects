@@ -136,6 +136,15 @@
   .pill-group input[type="radio"]:checked + label.pill { background: var(--cyan-500); border-color: var(--cyan-500); color: #fff; }
   .pill-group input[type="radio"]:focus-visible + label.pill { outline: 2px solid var(--cyan-500); outline-offset: 2px; }
 
+  .filter-tab {
+    display: inline-flex; align-items: center; justify-content: center; height: 34px; padding: 0 16px;
+    border-radius: 9px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); color: var(--text-600); background: var(--surface); font-family: inherit;
+  }
+  a.filter-tab:hover, button.filter-tab:hover { background: var(--surface-2); }
+  .filter-tab.active { background: var(--cyan-500); border-color: var(--cyan-500); color: #fff; }
+  .filter-tab.active:hover { background: var(--cyan-600); }
+
   .dropzone { border: 2px dashed var(--border-strong); border-radius: 13px; padding: 30px 20px; text-align: center; background: var(--surface-2); display: block; cursor: pointer; }
   .dropzone:hover { border-color: var(--cyan-500); }
   .dropzone .dz-title { font-size: 14px; font-weight: 700; margin: 8px 0 4px; }

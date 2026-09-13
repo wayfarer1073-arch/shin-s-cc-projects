@@ -1,10 +1,15 @@
 """사내 게시판(이슈/공지/잡담 공유).
 
 data/board.json에 글 목록을 저장한다. 글마다 태그(이슈/공지/잡담),
-제목(50자 이내), 본문(200자 이내), 작성자, 작성 시각을 가진다."""
+제목(50자 이내), 본문(200자 이내), 작성자, 작성 시각을 가진다.
+
+쓸데없이 용량을 계속 차지하지 않도록 작성한 지 RETENTION_DAYS(30일)가
+지난 글은 자동으로 지운다(별도 스케줄러 없이, 글 목록을 불러올 때마다
+확인해서 지운다)."""
 import json
 import time
 import uuid
+from datetime import date, timedelta
 
 from src.paths import DATA_DIR
 
@@ -13,6 +18,7 @@ BOARD_PATH = DATA_DIR / "board.json"
 TAGS = ["이슈", "공지", "잡담"]
 TITLE_MAX = 50
 BODY_MAX = 200
+RETENTION_DAYS = 30
 
 
 def _load():
@@ -28,9 +34,28 @@ def _save(posts):
         json.dump(posts, f, ensure_ascii=False, indent=2)
 
 
-def list_posts():
-    """최신순으로 전체 글 목록을 반환한다."""
+def purge_old_posts():
+    """작성한 지 RETENTION_DAYS가 지난 글을 지운다. 지운 게 있을 때만
+    파일을 다시 쓴다(매번 불필요하게 저장하지 않도록)."""
+    cutoff = (date.today() - timedelta(days=RETENTION_DAYS)).isoformat()
     posts = _load()
+    remaining = [p for p in posts if p["created_at"][:10] >= cutoff]
+    if len(remaining) != len(posts):
+        _save(remaining)
+
+
+def list_posts(tag=None, start_date=None, end_date=None):
+    """최신순으로 글 목록을 반환한다. tag를 주면 그 태그만, start_date/
+    end_date("YYYY-MM-DD")를 주면 작성일이 그 기간(둘 다 포함) 안인 글만.
+    부를 때마다 보관 기간이 지난 글을 먼저 정리한다."""
+    purge_old_posts()
+    posts = _load()
+    if tag:
+        posts = [p for p in posts if p.get("tag") == tag]
+    if start_date:
+        posts = [p for p in posts if p["created_at"][:10] >= start_date]
+    if end_date:
+        posts = [p for p in posts if p["created_at"][:10] <= end_date]
     return sorted(posts, key=lambda p: p["created_at"], reverse=True)
 
 
