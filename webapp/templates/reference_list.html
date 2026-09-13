@@ -13,6 +13,10 @@
     <div class="stat"><div class="num" style="font-size:14px">{{ t.updated or "없음" }}</div><div class="label">마지막 갱신</div></div>
   </div>
   <div class="muted" style="margin-bottom:10px">{{ t.help }}</div>
+  <div style="margin-bottom:14px">
+    <a href="/reference/{{ t.id }}/download" class="btn secondary">현재 내용 엑셀로 다운로드</a>
+    <span class="muted" style="margin-left:8px">받은 엑셀을 그대로 고쳐서 아래에 다시 올리면 됩니다.</span>
+  </div>
   <form action="/reference/{{ t.id }}/preview" method="post" enctype="multipart/form-data">
     <input type="file" name="file" required accept=".xlsx,.xls">
     <button type="submit" class="btn">새 파일 올려서 확인하기</button>

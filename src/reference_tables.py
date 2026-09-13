@@ -9,6 +9,7 @@ data/reference/*.json으로 저장할지가 정해져 있다. 업로드 즉시 �
 복사해둔다(되돌릴 수 있도록).
 """
 import json
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -209,6 +210,47 @@ def parse_upload(table, excel_path):
     if not data:
         raise ValueError("엑셀에서 읽은 내용이 없습니다. 파일이 비어있거나 형식이 다를 수 있습니다.")
     return data
+
+
+def build_export_workbook(table):
+    """table의 현재 내용(data/reference/*.json)을 업로드용 엑셀과 똑같은
+    양식(헤더/열 순서)으로 담은 워크북을 만든다. 이 파일을 내려받아 고친
+    뒤 그대로 다시 올리면 parse_upload가 문제없이 읽는다."""
+    path = table_json_path(table)
+    data = []
+    if path.exists():
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = re.sub(r'[\\/*?:\[\]]', "_", table["label"])[:31] or "참고자료"
+
+    kind = table["kind"]
+    if kind == "stock":
+        ws.append(["상품명", "재고합계"])
+        for row in data:
+            ws.append([row.get("name", ""), row.get("stock_total")])
+    elif kind == "option_list":
+        ws.append(["정식옵션명"])
+        for name in data:
+            ws.append([name])
+    elif kind == "code_table":
+        ws.append(["상품명", "코드"])
+        for row in data:
+            ws.append([row.get("name", ""), row.get("code", "")])
+    elif kind == "name_pair":
+        ws.append(["상품", "상품명"])
+        for row in data:
+            ws.append([row.get("a", ""), row.get("b", "")])
+    else:
+        raise ValueError(f"알 수 없는 참고 자료 종류: {kind}")
+
+    for col_cells in ws.columns:
+        width = max((len(str(c.value)) for c in col_cells if c.value is not None), default=8)
+        ws.column_dimensions[col_cells[0].column_letter].width = min(max(width + 2, 10), 60)
+
+    return wb
 
 
 def apply_replacement(table, new_data):

@@ -7,14 +7,16 @@
 실행:
     uvicorn webapp.app:app --host 0.0.0.0 --port 8000 --reload
 """
+import io
 import json
 import tempfile
 import uuid
 from datetime import date
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -177,6 +179,28 @@ def reference_list(request: Request):
         count, updated = ref.load_current_count(t)
         tables.append({**t, "count": count, "updated": updated})
     return render(request, "reference_list.html", {"tables": tables})
+
+
+@app.get("/reference/{table_id}/download")
+def reference_download(table_id: str):
+    table = ref.get_table(table_id)
+    if not table:
+        return HTMLResponse("알 수 없는 참고 자료입니다.", status_code=404)
+
+    wb = ref.build_export_workbook(table)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = table["file"].removesuffix(".json") + ".xlsx"
+    # 파일명이 한글이라 그대로 헤더에 넣으면 깨진다(HTTP 헤더는 라틴-1만
+    # 허용) - RFC 5987 형식(filename*)으로 인코딩하고, 구형 브라우저를 위해
+    # 아스키 대체 이름도 같이 준다.
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=\"reference.xlsx\"; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @app.post("/reference/{table_id}/preview", response_class=HTMLResponse)
