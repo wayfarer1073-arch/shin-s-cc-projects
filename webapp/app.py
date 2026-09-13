@@ -22,9 +22,11 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 import main as pipeline
-from src.archive import ARCHIVE_DIR
+from src.archive import load_orders
 from src import paths
 from src import reference_tables as ref
+from src import runs as runs_store
+from src.summary import compute_summary
 from webapp import auth
 from webapp import board
 
@@ -34,6 +36,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # 커밋되어 있던 참고자료/이력을 디스크로 복사해 넣는다. 로컬 개발 중에는
 # 아무 일도 하지 않는다(seed_if_empty 안에서 자체적으로 걸러짐).
 paths.seed_if_empty()
+
+# 이 기능(업로드한 사람별로 실행을 구분)을 만들기 전부터 있던 이력에는
+# _run_id가 없다. 그런 옛날 라인들에 날짜별로 "레거시 실행"을 한 번만
+# 붙여줘서 화면에서 완전히 사라지지 않게 한다(관리자에게만 보임).
+runs_store.backfill_legacy_runs()
 
 OUTPUT_DIR = paths.OUTPUT_DIR
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -80,27 +87,21 @@ def render(request: Request, name: str, context: dict | None = None, status_code
     # 여기서 한 번에 채워준다(매 라우트마다 따로 넣을 필요 없게).
     if current_user:
         context["board_latest"] = board.latest_by_tag()
+        # 관리자 화면에서 "누가 올렸는지"는 아이디(로그인용)가 아니라
+        # 이름으로 보여준다 - 처리 이력/결과 상세에서 쓴다.
+        if current_user["is_admin"]:
+            context["user_display_names"] = {u["username"]: u["display_name"] for u in auth.list_users()}
     return templates.TemplateResponse(request, name, context, status_code=status_code)
 
 
-def _list_run_dates():
-    """지금까지 보관된 날짜 목록(최신순)을 반환한다."""
-    if not ARCHIVE_DIR.exists():
-        return []
-    dates = sorted((p.stem for p in ARCHIVE_DIR.glob("*.json")), reverse=True)
-    return dates
-
-
-def _run_summary(run_date):
-    path = OUTPUT_DIR / f"summary_{run_date}.json"
-    if not path.exists():
-        return None
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+def _current_user(request: Request):
+    username = request.session.get("username")
+    return auth.find_user(username) if username else None
 
 
 def _run_files(run_date):
-    """그 날짜에 생성된 협력사 엑셀 파일 목록(파일명, 협력사, 사업부)을 반환한다."""
+    """그 날짜에 생성된 협력사 엑셀 파일 목록(파일명, 협력사, 사업부)을 반환한다.
+    이 파일들은 그날 여러 사람이 올린 내용이 전부 합쳐진 것이라 관리자만 본다."""
     compact = run_date.replace("-", "")
     files = []
     for p in sorted(OUTPUT_DIR.glob(f"{compact}_*.xlsx")):
@@ -113,10 +114,29 @@ def _run_files(run_date):
     return files
 
 
+def _run_scoped_summary(run):
+    """실행(run) 하나에 포함된 라인만 걸러서 그 실행만의 요약을 계산한다
+    (그 날짜 전체 합산이 아니라 - 업로드한 사람 본인 몫만 정확히 보이도록)."""
+    day_rows = load_orders(run["run_date"], run["run_date"])
+    rows = [r for r in day_rows if r.get("_run_id") == run["run_id"]]
+    by_vendor = {}
+    unclassified = []
+    ambiguous = []
+    for r in rows:
+        if r["match_status"] == "classified":
+            by_vendor.setdefault(r["vendor"], []).append(r)
+        elif r["match_status"] == "unclassified":
+            unclassified.append(r)
+        else:
+            ambiguous.append(r)
+    return compute_summary(rows, by_vendor, unclassified, ambiguous, run["run_date"])
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    run_dates = _list_run_dates()
-    recent = [{"run_date": d, "summary": _run_summary(d)} for d in run_dates[:14]]
+    user = _current_user(request)
+    owner = None if user["is_admin"] else user["username"]
+    recent = runs_store.list_runs(uploaded_by=owner)[:14]
     return render(
         request,
         "index.html",
@@ -126,6 +146,7 @@ def index(request: Request):
 
 @app.post("/process")
 async def process(request: Request, files: list[UploadFile] = File(...), brand: str = Form("")):
+    username = request.session.get("username")
     with tempfile.TemporaryDirectory() as tmp:
         saved_paths = []
         for uf in files:
@@ -140,25 +161,33 @@ async def process(request: Request, files: list[UploadFile] = File(...), brand: 
             return RedirectResponse(url="/", status_code=303)
 
         brand_override = brand or None
-        written, review_path, summary_path, dashboard_path = pipeline.run(
-            saved_paths, OUTPUT_DIR, brand_override=brand_override
+        run_id, written, review_path, summary_path, dashboard_path = pipeline.run(
+            saved_paths, OUTPUT_DIR, brand_override=brand_override, uploaded_by=username
         )
 
-    run_date = date.today().isoformat()
-    return RedirectResponse(url=f"/runs/{run_date}", status_code=303)
+    return RedirectResponse(url=f"/runs/{run_id}", status_code=303)
 
 
-@app.get("/runs/{run_date}", response_class=HTMLResponse)
-def run_detail(request: Request, run_date: str):
-    summary = _run_summary(run_date)
-    files = _run_files(run_date)
-    review_exists = (OUTPUT_DIR / f"확인필요_{run_date}.xlsx").exists()
-    dashboard_exists = (OUTPUT_DIR / f"dashboard_{run_date}.html").exists()
+@app.get("/runs/{run_id}", response_class=HTMLResponse)
+def run_detail(request: Request, run_id: str):
+    user = _current_user(request)
+    run = runs_store.get_run(run_id)
+    if not run:
+        return HTMLResponse("처리 결과를 찾을 수 없습니다.", status_code=404)
+    if not user["is_admin"] and run["uploaded_by"] != user["username"]:
+        return HTMLResponse("본인이 처리한 결과만 볼 수 있습니다.", status_code=403)
+
+    summary = _run_scoped_summary(run)
+    is_admin = user["is_admin"]
+    files = _run_files(run["run_date"]) if is_admin else []
+    review_exists = is_admin and (OUTPUT_DIR / f"확인필요_{run['run_date']}.xlsx").exists()
+    dashboard_exists = is_admin and (OUTPUT_DIR / f"dashboard_{run['run_date']}.html").exists()
     return render(
         request,
         "run_detail.html",
         {
-            "run_date": run_date,
+            "run": run,
+            "run_date": run["run_date"],
             "summary": summary,
             "files": files,
             "review_exists": review_exists,
@@ -169,13 +198,9 @@ def run_detail(request: Request, run_date: str):
 
 @app.get("/runs", response_class=HTMLResponse)
 def run_list(request: Request, start: str = "", end: str = ""):
-    run_dates = _list_run_dates()
-    # run_date는 "YYYY-MM-DD" 형식이라 문자열 비교만으로 날짜 범위 필터가 된다.
-    if start:
-        run_dates = [d for d in run_dates if d >= start]
-    if end:
-        run_dates = [d for d in run_dates if d <= end]
-    recent = [{"run_date": d, "summary": _run_summary(d)} for d in run_dates]
+    user = _current_user(request)
+    owner = None if user["is_admin"] else user["username"]
+    recent = runs_store.list_runs(uploaded_by=owner, start_date=start or None, end_date=end or None)
     return render(request, "run_list.html", {"recent": recent, "start": start, "end": end})
 
 

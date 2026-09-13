@@ -18,27 +18,30 @@ _FIELDS = [
 ]
 
 
-def _serialize(rec, vendor, match_status):
+def _serialize(rec, vendor, match_status, run_id, uploaded_by):
     row = {f: rec.get(f) for f in _FIELDS}
     if row["order_date"] is not None:
         row["order_date"] = row["order_date"].isoformat()
     row["vendor"] = vendor
     row["match_status"] = match_status
+    row["_run_id"] = run_id
+    row["_uploaded_by"] = uploaded_by
     return row
 
 
-def archive_orders(by_vendor, unclassified, ambiguous, run_date, archive_dir=ARCHIVE_DIR):
+def archive_orders(by_vendor, unclassified, ambiguous, run_date, archive_dir=ARCHIVE_DIR, run_id=None, uploaded_by=None):
     """그날 처리한 주문 라인(분류 결과 포함)을 archive_dir/{run_date}.json에 저장한다.
     같은 날짜에 이미 보관된 내용이 있으면 그 위에 이어붙인다(하루에 여러 원본
     파일을 나눠 처리하는 경우 — 예: 스마트스토어분 + 카카오분 — 먼저 처리한
     내용이 사라지지 않도록). 단, 같은 원본 파일의 같은 줄(_source_file +
     _source_row)이 이미 보관돼 있으면 중복으로 또 쌓지 않는다(같은 파일을
-    실수로 두 번 올려도 안전)."""
+    실수로 두 번 올려도 안전). run_id/uploaded_by는 이번에 새로 추가되는
+    라인에만 찍힌다(이미 보관된 라인의 소유자는 안 바뀜)."""
     rows = []
     for vendor, recs in by_vendor.items():
-        rows.extend(_serialize(r, vendor, "classified") for r in recs)
-    rows.extend(_serialize(r, None, "unclassified") for r in unclassified)
-    rows.extend(_serialize(r, None, "ambiguous") for r in ambiguous)
+        rows.extend(_serialize(r, vendor, "classified", run_id, uploaded_by) for r in recs)
+    rows.extend(_serialize(r, None, "unclassified", run_id, uploaded_by) for r in unclassified)
+    rows.extend(_serialize(r, None, "ambiguous", run_id, uploaded_by) for r in ambiguous)
 
     archive_dir = Path(archive_dir)
     archive_dir.mkdir(parents=True, exist_ok=True)

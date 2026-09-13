@@ -17,23 +17,27 @@ from src.summary import compute_summary
 from src.dashboard import render_dashboard_html
 from src.reconcile import check_no_omission, collect_special_notes, collect_missing_info
 from src.archive import archive_orders, load_orders
+from src import runs as runs_store
 
 
 def _parse_iso_date(s):
     return datetime.strptime(s, "%Y-%m-%d").date() if isinstance(s, str) else s
 
 
-def run(input_paths, out_dir, brand_override=None):
+def run(input_paths, out_dir, brand_override=None, uploaded_by=None):
     """input_paths를 읽어 협력사별로 분류하고 양식을 작성한다. brand_override를
     주면(원본 파일명이 "{YYMMDD} {사업부} {매출처} 주문서.xlsx" 규칙을 안 따라
     사업부를 자동으로 못 얻는 파일 등) 읽은 모든 줄의 사업부를 그 값으로
-    강제 지정한다.
+    강제 지정한다. uploaded_by는 이 실행을 올린 사용자 아이디로, 처리 이력
+    화면에서 "누가 올렸는지"·"본인 것만 보기"에 쓰인다.
 
     오늘 이미 다른 파일을 처리해서 보관본이 있는 경우, 방금 읽은 내용만으로
     양식을 다시 쓰면 먼저 처리한 내용이 사라진다. 그래서 보관(archive_orders,
     같은 날짜 보관본에 이어붙임) 이후 그날 보관된 전체 내용을 다시 불러와
     양식 작성·요약·대시보드는 항상 "오늘 지금까지 처리한 전체"를 기준으로
-    한다."""
+    한다. 반면 처리 이력의 "실행(run)" 단위 통계는 이번 호출로 새로 추가된
+    라인만으로 계산해서, 업로드한 사람 본인이 올린 분량만 정확히 보게 한다."""
+    run_id = runs_store.new_run_id()
     all_rows = []
     for path in input_paths:
         rows = read_market_file(path)
@@ -63,12 +67,28 @@ def run(input_paths, out_dir, brand_override=None):
     run_date = date.today().isoformat()
     run_date_compact = run_date.replace("-", "")
 
-    archive_path = archive_orders(by_vendor, this_run_unclassified, this_run_ambiguous, run_date)
+    archive_path = archive_orders(
+        by_vendor, this_run_unclassified, this_run_ambiguous, run_date,
+        run_id=run_id, uploaded_by=uploaded_by,
+    )
     print(f"[보관] 이번 처리 {len(all_rows)}건 -> {archive_path}")
 
     # 오늘 보관된 전체(이번 처리분 포함)를 다시 불러와 양식 작성·요약·대조의
     # 기준으로 삼는다 — 오늘 여러 번 나눠 올려도 매번 "오늘 전체"가 반영됨.
     day_rows = load_orders(run_date, run_date, archive_dir=archive_path.parent)
+
+    # 처리 이력 화면의 "실행(run)" 통계는 이번 호출로 실제 새로 보관된
+    # 라인만 센다(같은 파일을 실수로 다시 올려 중복으로 걸러진 라인은
+    # 제외 - 그래야 "내가 이번에 몇 건 처리했다"가 정확함).
+    this_run_saved_rows = [r for r in day_rows if r.get("_run_id") == run_id]
+    runs_store.record_run(
+        run_id, run_date, uploaded_by,
+        filenames=[Path(p).name for p in input_paths],
+        order_count=len(this_run_saved_rows),
+        unclassified_count=sum(1 for r in this_run_saved_rows if r["match_status"] == "unclassified"),
+        ambiguous_count=sum(1 for r in this_run_saved_rows if r["match_status"] == "ambiguous"),
+    )
+
     all_rows = []
     by_vendor = {}
     unclassified = []
@@ -153,7 +173,7 @@ def run(input_paths, out_dir, brand_override=None):
     dashboard_path.write_text(render_dashboard_html(summary), encoding="utf-8")
     print(f"[대시보드] -> {dashboard_path}")
 
-    return written, review_path, summary_path, dashboard_path
+    return run_id, written, review_path, summary_path, dashboard_path
 
 
 def main():

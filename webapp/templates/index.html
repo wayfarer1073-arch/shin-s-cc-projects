@@ -43,24 +43,30 @@
 </form>
 
 <div class="card">
-  <h2>최근 처리 내역</h2>
+  <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
+    <h2 style="margin:0;">최근 처리 내역</h2>
+    <span class="info-tip" tabindex="0">!
+      <span class="tip-bubble">{% if current_user.is_admin %}관리자는 전체 직원의 처리 내역을 볼 수 있습니다.{% else %}본인이 올려서 처리한 내역만 보입니다.{% endif %}</span>
+    </span>
+  </div>
   {% if recent %}
   <div style="display:flex; flex-direction:column; gap:8px;">
     {% for r in recent %}
-    {% set need = ((r.summary.unclassified_count or 0) + (r.summary.ambiguous_count or 0)) if r.summary else 0 %}
+    {% set need = (r.unclassified_count or 0) + (r.ambiguous_count or 0) %}
     <div class="row-card" style="border:1px solid var(--border); flex-wrap:wrap;">
-      <div style="width:140px; font-weight:700; font-size:13.5px;">{{ r.run_date }}</div>
-      <div style="display:flex; gap:8px; flex:1;">
-        <span class="badge">총 {{ r.summary.total_order_count if r.summary else "-" }}건</span>
-      </div>
-      {% if r.summary %}
-        {% if need > 0 %}
-        <span class="badge flag">확인 필요 {{ need }}건</span>
-        {% else %}
-        <span class="badge ok">확인 완료</span>
-        {% endif %}
+      <div style="width:150px; font-weight:700; font-size:13.5px;">{{ r.run_date }}</div>
+      {% if current_user.is_admin %}
+      <span class="badge" style="background:var(--surface-2); color:var(--text-600);">{{ (user_display_names.get(r.uploaded_by) if r.uploaded_by else none) or "알 수 없음" }}</span>
       {% endif %}
-      <a href="/runs/{{ r.run_date }}" class="btn secondary" style="padding:8px 14px; font-size:12.5px;">상세보기</a>
+      <div style="display:flex; gap:8px; flex:1;">
+        <span class="badge">총 {{ r.order_count }}건</span>
+      </div>
+      {% if need > 0 %}
+      <span class="badge flag">확인 필요 {{ need }}건</span>
+      {% else %}
+      <span class="badge ok">확인 완료</span>
+      {% endif %}
+      <a href="/runs/{{ r.run_id }}" class="btn secondary" style="padding:8px 14px; font-size:12.5px;">상세보기</a>
     </div>
     {% endfor %}
   </div>

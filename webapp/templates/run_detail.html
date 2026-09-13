@@ -11,7 +11,10 @@
 <div style="display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:12px;">
   <div>
     <h1>{{ run_date }} 처리 결과</h1>
-    {% if summary %}<p class="muted">{{ summary.total_order_count }}건</p>{% endif %}
+    <p class="muted">
+      {{ summary.total_order_count }}건
+      {% if current_user.is_admin %} · 업로드: {{ ((user_display_names.get(run.uploaded_by) if run.uploaded_by else none) or "알 수 없음(예전 기록)") }} ({{ run.uploaded_at }}){% endif %}
+    </p>
   </div>
   <div style="display:flex; gap:10px;">
     {% if dashboard_exists %}
@@ -26,6 +29,10 @@
   </div>
 </div>
 
+{% if not current_user.is_admin %}
+<div class="note" style="margin-bottom:20px;">이 화면은 본인이 업로드한 분량에 대한 결과만 보여줍니다. 협력사에 보낼 발주 파일 전체 합산본과 매출·KPI 대시보드는 관리자만 볼 수 있어요.</div>
+{% endif %}
+
 {% if summary %}
 {% set need = (summary.unclassified_count or 0) + (summary.ambiguous_count or 0) %}
 <div class="stat-row" style="margin-bottom:20px;">
@@ -34,7 +41,7 @@
     <div class="label">전체 주문</div>
   </div>
   <div class="stat" style="flex:1;">
-    <div class="num">{{ files|length }}곳</div>
+    <div class="num">{{ summary.vendor_order_counts|length }}곳</div>
     <div class="label">협력사</div>
   </div>
   <div class="stat {% if need > 0 %}flag{% endif %}" style="flex:1;">
@@ -95,8 +102,14 @@
 <p class="muted">이 날짜의 요약 정보를 찾을 수 없습니다.</p>
 {% endif %}
 
+{% if current_user.is_admin %}
 <div class="card">
-  <h2>협력사별 발주 파일</h2>
+  <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
+    <h2 style="margin:0;">협력사별 발주 파일</h2>
+    <span class="info-tip" tabindex="0">!
+      <span class="tip-bubble">그날 여러 직원이 올린 내용이 전부 합쳐진 전체 발주 파일입니다. 그래서 관리자만 볼 수 있습니다.</span>
+    </span>
+  </div>
   {% if files %}
   <div style="display:flex; flex-direction:column;">
     {% for f in files %}
@@ -115,6 +128,7 @@
   <div class="empty">생성된 파일이 없습니다.</div>
   {% endif %}
 </div>
+{% endif %}
 
 <a href="/" class="btn secondary">← 업로드 화면으로</a>
 {% endblock %}

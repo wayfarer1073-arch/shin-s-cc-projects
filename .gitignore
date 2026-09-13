@@ -9,3 +9,4 @@ data/reference/_staging/
 data/users.json
 data/.session_secret
 data/board.json
+data/runs.json
