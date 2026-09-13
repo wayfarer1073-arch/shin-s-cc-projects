@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:420px; margin:40px auto;">
+  <h1>처음 설정 — 관리자 계정 만들기</h1>
+  <p class="muted">아직 계정이 하나도 없습니다. 가장 먼저 쓸 관리자 계정을 만들어주세요. 이후 직원 계정은 이 계정으로 로그인해서 "사용자 관리"에서 추가할 수 있습니다.</p>
+
+  {% if error %}<div class="note error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/setup" style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+    <label>
+      <div class="muted" style="margin-bottom:4px;">아이디</div>
+      <input type="text" name="username" required style="width:100%; padding:9px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:14px;">
+    </label>
+    <label>
+      <div class="muted" style="margin-bottom:4px;">이름 (표시용, 생략 가능)</div>
+      <input type="text" name="display_name" style="width:100%; padding:9px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:14px;">
+    </label>
+    <label>
+      <div class="muted" style="margin-bottom:4px;">비밀번호 (4자 이상)</div>
+      <input type="password" name="password" required minlength="4" style="width:100%; padding:9px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:14px;">
+    </label>
+    <button type="submit" class="btn" style="margin-top:6px;">관리자 계정 만들기</button>
+  </form>
+</div>
+{% endblock %}

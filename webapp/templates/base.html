@@ -101,9 +101,14 @@
 <header>
   <a href="/">오픈마켓 주문서 처리</a>
   <nav>
+    {% if current_user %}
     <a href="/">업로드</a>
     <a href="/runs">처리 이력</a>
     <a href="/reference">참고 자료 관리</a>
+    {% if current_user.is_admin %}<a href="/users">사용자 관리</a>{% endif %}
+    <span style="color:#948dc2; margin-left:18px; font-size:13px;">{{ current_user.display_name }}님</span>
+    <a href="/logout">로그아웃</a>
+    {% endif %}
   </nav>
 </header>
 <main>

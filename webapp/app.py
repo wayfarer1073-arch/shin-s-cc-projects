@@ -17,10 +17,12 @@ from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 import main as pipeline
 from src.archive import ARCHIVE_DIR
 from src import reference_tables as ref
+from webapp import auth
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / "output"
@@ -32,8 +34,38 @@ with open(BASE_DIR / "config" / "brands.json", encoding="utf-8") as f:
     BRAND_LABELS = list(json.load(f)["brands"].keys())
 
 app = FastAPI(title="오픈마켓 주문서 처리")
+
+
+# 주의: @app.middleware("http")로 등록하는 미들웨어는 "나중에 등록할수록
+# 더 바깥쪽"이 되어 먼저 실행된다. 그래서 이 로그인 검사 미들웨어를 먼저
+# 등록하고, SessionMiddleware를 그 다음에 등록해야 SessionMiddleware가
+# 더 바깥쪽에서 먼저 request.session을 만들어준다. 순서를 바꾸면
+# "SessionMiddleware must be installed" 에러가 난다.
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    # 파일 다운로드(/files, /download)도 업무 자료라 로그인해야만 접근 가능.
+    # 계정이 하나도 없으면(최초 설치) 어떤 경로든 /setup 으로 보낸다.
+    path = request.url.path
+    if not auth.is_public_path(path):
+        if not auth.users_exist():
+            return RedirectResponse(url="/setup", status_code=303)
+        if not request.session.get("username"):
+            return RedirectResponse(url="/login", status_code=303)
+    return await call_next(request)
+
+
+app.add_middleware(SessionMiddleware, secret_key=auth.get_session_secret(), same_site="lax")
+
+
 app.mount("/files", StaticFiles(directory=OUTPUT_DIR), name="files")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+
+def render(request: Request, name: str, context: dict | None = None, status_code: int = 200):
+    context = dict(context or {})
+    username = request.session.get("username")
+    context["current_user"] = auth.find_user(username) if username else None
+    return templates.TemplateResponse(request, name, context, status_code=status_code)
 
 
 def _list_run_dates():
@@ -70,7 +102,7 @@ def _run_files(run_date):
 def index(request: Request):
     run_dates = _list_run_dates()
     recent = [{"run_date": d, "summary": _run_summary(d)} for d in run_dates[:14]]
-    return templates.TemplateResponse(
+    return render(
         request,
         "index.html",
         {"brands": BRAND_LABELS, "recent": recent, "today": date.today().isoformat()},
@@ -107,7 +139,7 @@ def run_detail(request: Request, run_date: str):
     files = _run_files(run_date)
     review_exists = (OUTPUT_DIR / f"확인필요_{run_date}.xlsx").exists()
     dashboard_exists = (OUTPUT_DIR / f"dashboard_{run_date}.html").exists()
-    return templates.TemplateResponse(
+    return render(
         request,
         "run_detail.html",
         {
@@ -124,7 +156,7 @@ def run_detail(request: Request, run_date: str):
 def run_list(request: Request):
     run_dates = _list_run_dates()
     recent = [{"run_date": d, "summary": _run_summary(d)} for d in run_dates]
-    return templates.TemplateResponse(request, "run_list.html", {"recent": recent})
+    return render(request, "run_list.html", {"recent": recent})
 
 
 @app.get("/download/{filename}")
@@ -144,7 +176,7 @@ def reference_list(request: Request):
     for t in ref.TABLES:
         count, updated = ref.load_current_count(t)
         tables.append({**t, "count": count, "updated": updated})
-    return templates.TemplateResponse(request, "reference_list.html", {"tables": tables})
+    return render(request, "reference_list.html", {"tables": tables})
 
 
 @app.post("/reference/{table_id}/preview", response_class=HTMLResponse)
@@ -159,7 +191,7 @@ async def reference_preview(request: Request, table_id: str, file: UploadFile = 
         try:
             new_data = ref.parse_upload(table, dest)
         except Exception as e:
-            return templates.TemplateResponse(
+            return render(
                 request, "reference_error.html", {"table": table, "error": str(e)}
             )
 
@@ -169,7 +201,7 @@ async def reference_preview(request: Request, table_id: str, file: UploadFile = 
         json.dump(new_data, f, ensure_ascii=False, indent=2)
 
     old_count, _ = ref.load_current_count(table)
-    return templates.TemplateResponse(
+    return render(
         request,
         "reference_preview.html",
         {
@@ -206,3 +238,119 @@ def reference_cancel(table_id: str, token: str = Form(...)):
     staging_path = STAGING_DIR / f"{token}.json"
     staging_path.unlink(missing_ok=True)
     return RedirectResponse(url="/reference", status_code=303)
+
+
+# --- 로그인 / 계정 관리 ------------------------------------------------
+
+@app.get("/setup", response_class=HTMLResponse)
+def setup_form(request: Request):
+    if auth.users_exist():
+        # 이미 계정이 있으면 최초 설치 화면을 다시 쓸 수 없다.
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse(request, "setup.html", {"error": None})
+
+
+@app.post("/setup")
+def setup_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    display_name: str = Form(""),
+):
+    if auth.users_exist():
+        return RedirectResponse(url="/login", status_code=303)
+    try:
+        auth.create_user(username, password, display_name=display_name, is_admin=True)
+    except ValueError as e:
+        return templates.TemplateResponse(
+            request, "setup.html", {"error": str(e)}, status_code=400
+        )
+    request.session["username"] = username.strip()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_form(request: Request, next: str = "/"):
+    if not auth.users_exist():
+        return RedirectResponse(url="/setup", status_code=303)
+    return templates.TemplateResponse(request, "login.html", {"error": None, "next": next})
+
+
+@app.post("/login")
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/"),
+):
+    user = auth.verify_login(username.strip(), password)
+    if not user:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"error": "아이디 또는 비밀번호가 올바르지 않습니다.", "next": next},
+            status_code=401,
+        )
+    request.session["username"] = user["username"]
+    return RedirectResponse(url=next or "/", status_code=303)
+
+
+@app.get("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
+def _require_admin(request: Request):
+    """관리자가 아니면 None을 반환(호출 쪽에서 403 처리)."""
+    username = request.session.get("username")
+    user = auth.find_user(username) if username else None
+    if not user or not user.get("is_admin"):
+        return None
+    return user
+
+
+@app.get("/users", response_class=HTMLResponse)
+def users_list(request: Request):
+    if not _require_admin(request):
+        return HTMLResponse("관리자만 접근할 수 있습니다.", status_code=403)
+    return render(request, "users.html", {"users": auth.list_users(), "error": None})
+
+
+@app.post("/users/create")
+def users_create(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    display_name: str = Form(""),
+    is_admin: str = Form(""),
+):
+    if not _require_admin(request):
+        return HTMLResponse("관리자만 접근할 수 있습니다.", status_code=403)
+    try:
+        auth.create_user(username, password, display_name=display_name, is_admin=bool(is_admin))
+    except ValueError as e:
+        return render(request, "users.html", {"users": auth.list_users(), "error": str(e)}, status_code=400)
+    return RedirectResponse(url="/users", status_code=303)
+
+
+@app.post("/users/{target_username}/delete")
+def users_delete(request: Request, target_username: str):
+    if not _require_admin(request):
+        return HTMLResponse("관리자만 접근할 수 있습니다.", status_code=403)
+    try:
+        auth.delete_user(target_username)
+    except ValueError as e:
+        return render(request, "users.html", {"users": auth.list_users(), "error": str(e)}, status_code=400)
+    return RedirectResponse(url="/users", status_code=303)
+
+
+@app.post("/users/{target_username}/reset-password")
+def users_reset_password(request: Request, target_username: str, new_password: str = Form(...)):
+    if not _require_admin(request):
+        return HTMLResponse("관리자만 접근할 수 있습니다.", status_code=403)
+    try:
+        auth.set_password(target_username, new_password)
+    except ValueError as e:
+        return render(request, "users.html", {"users": auth.list_users(), "error": str(e)}, status_code=400)
+    return RedirectResponse(url="/users", status_code=303)

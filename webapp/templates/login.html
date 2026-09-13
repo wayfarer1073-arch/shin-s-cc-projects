@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:380px; margin:60px auto;">
+  <h1>로그인</h1>
+  <p class="muted">오픈마켓 주문서 처리 시스템</p>
+
+  {% if error %}<div class="note error">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/login" style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>
+      <div class="muted" style="margin-bottom:4px;">아이디</div>
+      <input type="text" name="username" required autofocus style="width:100%; padding:9px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:14px;">
+    </label>
+    <label>
+      <div class="muted" style="margin-bottom:4px;">비밀번호</div>
+      <input type="password" name="password" required style="width:100%; padding:9px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:14px;">
+    </label>
+    <button type="submit" class="btn" style="margin-top:6px;">로그인</button>
+  </form>
+</div>
+{% endblock %}

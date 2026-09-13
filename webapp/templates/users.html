@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>사용자 관리</h1>
+  <p class="muted">직원 계정을 추가/삭제하고 비밀번호를 초기화할 수 있습니다. 관리자만 볼 수 있는 화면입니다.</p>
+
+  {% if error %}<div class="note error">{{ error }}</div>{% endif %}
+
+  <table style="margin-top:14px;">
+    <tr><th>아이디</th><th>이름</th><th>권한</th><th>가입일</th><th>비밀번호 초기화</th><th>삭제</th></tr>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.display_name }}</td>
+      <td>{% if u.is_admin %}<span class="badge">관리자</span>{% else %}직원{% endif %}</td>
+      <td class="muted">{{ u.created_at }}</td>
+      <td>
+        <form action="/users/{{ u.username }}/reset-password" method="post" style="display:flex; gap:6px;">
+          <input type="password" name="new_password" placeholder="새 비밀번호" required minlength="4" style="width:120px; padding:6px 8px; border:1px solid #d8d4ec; border-radius:6px; font-size:12.5px;">
+          <button type="submit" class="btn secondary" style="padding:6px 10px; font-size:12.5px;">변경</button>
+        </form>
+      </td>
+      <td>
+        <form action="/users/{{ u.username }}/delete" method="post" onsubmit="return confirm('{{ u.username }} 계정을 삭제할까요?');">
+          <button type="submit" class="btn secondary" style="padding:6px 10px; font-size:12.5px; color:#b8433a;">삭제</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>새 계정 추가</h2>
+  <form method="post" action="/users/create" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+    <label>
+      <div class="muted" style="margin-bottom:4px; font-size:12px;">아이디</div>
+      <input type="text" name="username" required style="padding:8px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:13.5px;">
+    </label>
+    <label>
+      <div class="muted" style="margin-bottom:4px; font-size:12px;">이름</div>
+      <input type="text" name="display_name" style="padding:8px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:13.5px;">
+    </label>
+    <label>
+      <div class="muted" style="margin-bottom:4px; font-size:12px;">비밀번호 (4자 이상)</div>
+      <input type="password" name="password" required minlength="4" style="padding:8px 10px; border:1px solid #d8d4ec; border-radius:6px; font-size:13.5px;">
+    </label>
+    <label style="display:flex; align-items:center; gap:6px; padding-bottom:9px;">
+      <input type="checkbox" name="is_admin" value="1">
+      <span class="muted" style="font-size:12.5px;">관리자 권한</span>
+    </label>
+    <button type="submit" class="btn">추가</button>
+  </form>
+</div>
+{% endblock %}
