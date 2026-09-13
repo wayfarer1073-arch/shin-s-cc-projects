@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>{{ table.label }} — 읽기 실패</h1>
+  <div class="note error">{{ error }}</div>
+  <a href="/reference" class="btn secondary">← 참고 자료 관리로 돌아가기</a>
+</div>
+{% endblock %}

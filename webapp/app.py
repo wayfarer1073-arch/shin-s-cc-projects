@@ -9,6 +9,7 @@
 """
 import json
 import tempfile
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -19,10 +20,13 @@ from fastapi.templating import Jinja2Templates
 
 import main as pipeline
 from src.archive import ARCHIVE_DIR
+from src import reference_tables as ref
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
+STAGING_DIR = BASE_DIR / "data" / "reference" / "_staging"
+STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
 with open(BASE_DIR / "config" / "brands.json", encoding="utf-8") as f:
     BRAND_LABELS = list(json.load(f)["brands"].keys())
@@ -130,3 +134,75 @@ def download(filename: str):
     if not path.exists():
         return HTMLResponse("파일을 찾을 수 없습니다.", status_code=404)
     return FileResponse(path, filename=safe_name)
+
+
+# --- 참고 자료(재고 현황/정식 옵션명/상품코드/이름쌍) 관리 -----------------
+
+@app.get("/reference", response_class=HTMLResponse)
+def reference_list(request: Request):
+    tables = []
+    for t in ref.TABLES:
+        count, updated = ref.load_current_count(t)
+        tables.append({**t, "count": count, "updated": updated})
+    return templates.TemplateResponse(request, "reference_list.html", {"tables": tables})
+
+
+@app.post("/reference/{table_id}/preview", response_class=HTMLResponse)
+async def reference_preview(request: Request, table_id: str, file: UploadFile = File(...)):
+    table = ref.get_table(table_id)
+    if not table:
+        return HTMLResponse("알 수 없는 참고 자료입니다.", status_code=404)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp) / (file.filename or "upload.xlsx")
+        dest.write_bytes(await file.read())
+        try:
+            new_data = ref.parse_upload(table, dest)
+        except Exception as e:
+            return templates.TemplateResponse(
+                request, "reference_error.html", {"table": table, "error": str(e)}
+            )
+
+    token = uuid.uuid4().hex
+    staging_path = STAGING_DIR / f"{token}.json"
+    with open(staging_path, "w", encoding="utf-8") as f:
+        json.dump(new_data, f, ensure_ascii=False, indent=2)
+
+    old_count, _ = ref.load_current_count(table)
+    return templates.TemplateResponse(
+        request,
+        "reference_preview.html",
+        {
+            "table": table,
+            "token": token,
+            "new_count": len(new_data),
+            "old_count": old_count,
+            "preview_rows": new_data[:20],
+            "kind": table["kind"],
+        },
+    )
+
+
+@app.post("/reference/{table_id}/confirm")
+def reference_confirm(table_id: str, token: str = Form(...)):
+    table = ref.get_table(table_id)
+    if not table:
+        return HTMLResponse("알 수 없는 참고 자료입니다.", status_code=404)
+
+    staging_path = STAGING_DIR / f"{token}.json"
+    if not staging_path.exists():
+        return HTMLResponse("업로드 내용을 찾을 수 없습니다(시간이 지나 만료되었을 수 있습니다). 다시 업로드해주세요.", status_code=400)
+
+    with open(staging_path, encoding="utf-8") as f:
+        new_data = json.load(f)
+    ref.apply_replacement(table, new_data)
+    staging_path.unlink(missing_ok=True)
+
+    return RedirectResponse(url="/reference", status_code=303)
+
+
+@app.post("/reference/{table_id}/cancel")
+def reference_cancel(table_id: str, token: str = Form(...)):
+    staging_path = STAGING_DIR / f"{token}.json"
+    staging_path.unlink(missing_ok=True)
+    return RedirectResponse(url="/reference", status_code=303)

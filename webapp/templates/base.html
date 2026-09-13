@@ -83,6 +83,18 @@
     border-radius: 10px;
   }
   .empty { color: #999; font-style: italic; padding: 20px 0; text-align: center; }
+  .note {
+    background: #fff7e6;
+    border-left: 4px solid #e0a94a;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    border-radius: 0 6px 6px 0;
+  }
+  .note.error { background: #fdeaea; border-left-color: #d16060; }
+  .diff-num { font-size: 22px; font-weight: 700; }
+  .diff-num.up { color: #1c7a52; }
+  .diff-num.down { color: #b8433a; }
 </style>
 </head>
 <body>
@@ -91,6 +103,7 @@
   <nav>
     <a href="/">업로드</a>
     <a href="/runs">처리 이력</a>
+    <a href="/reference">참고 자료 관리</a>
   </nav>
 </header>
 <main>

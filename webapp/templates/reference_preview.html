@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>{{ table.label }} — 교체 전 확인</h1>
+  <p class="muted">업로드한 엑셀에서 이렇게 읽었습니다. 내용이 맞으면 아래 "이 내용으로 교체" 버튼을 누르세요. 아니면 취소하고 파일을 다시 확인해서 올려주세요.</p>
+
+  <div class="stat-row">
+    <div class="stat"><div class="num">{{ old_count }}</div><div class="label">기존 건수</div></div>
+    <div class="stat">
+      <div class="diff-num {% if new_count > old_count %}up{% elif new_count < old_count %}down{% endif %}">{{ new_count }}</div>
+      <div class="label">새 파일 건수</div>
+    </div>
+  </div>
+
+  {% if new_count < old_count * 0.5 and old_count > 0 %}
+  <div class="note error">
+    새 내용이 기존보다 건수가 절반 이하로 크게 줄었습니다. 엑셀의 일부만 올렸거나 열을 잘못 읽었을 수 있으니 한 번 더 확인해주세요.
+  </div>
+  {% endif %}
+
+  <h2 style="margin-top:18px">미리보기 (처음 20건)</h2>
+  <table>
+    {% if kind == "stock" %}
+    <tr><th>상품명</th><th>재고합계</th></tr>
+    {% for row in preview_rows %}
+    <tr><td>{{ row.name }}</td><td>{{ row.stock_total if row.stock_total is not none else "-" }}</td></tr>
+    {% endfor %}
+    {% elif kind == "option_list" %}
+    <tr><th>옵션명</th></tr>
+    {% for row in preview_rows %}
+    <tr><td>{{ row }}</td></tr>
+    {% endfor %}
+    {% elif kind == "code_table" %}
+    <tr><th>상품명</th><th>코드</th></tr>
+    {% for row in preview_rows %}
+    <tr><td>{{ row.name }}</td><td>{{ row.code }}</td></tr>
+    {% endfor %}
+    {% elif kind == "name_pair" %}
+    <tr><th>상품 (a)</th><th>상품명 (b)</th></tr>
+    {% for row in preview_rows %}
+    <tr><td>{{ row.a }}</td><td>{{ row.b }}</td></tr>
+    {% endfor %}
+    {% endif %}
+  </table>
+
+  <div style="margin-top:16px; display:flex; gap:10px">
+    <form action="/reference/{{ table.id }}/confirm" method="post">
+      <input type="hidden" name="token" value="{{ token }}">
+      <button type="submit" class="btn">이 내용으로 교체</button>
+    </form>
+    <form action="/reference/{{ table.id }}/cancel" method="post">
+      <input type="hidden" name="token" value="{{ token }}">
+      <button type="submit" class="btn secondary">취소</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

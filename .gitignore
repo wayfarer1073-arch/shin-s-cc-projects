@@ -4,3 +4,5 @@ output/*.xlsx
 output/*.json
 output/*.html
 output/*.pdf
+data/reference/_backups/
+data/reference/_staging/
