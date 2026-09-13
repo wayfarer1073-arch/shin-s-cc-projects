@@ -15,19 +15,24 @@
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--cyan-700)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8V6"/><path d="M5 12v6c0 1.55 3.13 2.8 7 2.8s7-1.25 7-2.8v-6"/></svg>
     </div>
     <div style="flex:1;">
-      <h2 style="margin-bottom:4px;">{{ t.label }}</h2>
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+        <h2 style="margin:0;">{{ t.label }}</h2>
+        <span class="info-tip" tabindex="0">!
+          <span class="tip-bubble">{{ t.help }}</span>
+        </span>
+      </div>
       <div class="muted" style="margin-bottom:2px;">현재 {{ t.count }}건 · {{ t.updated or "갱신 이력 없음" }}</div>
     </div>
   </div>
 
-  <div class="muted" style="margin:12px 0;">{{ t.help }}</div>
-
-  <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+  <div style="display:flex; align-items:center; gap:8px; margin:14px 0; flex-wrap:wrap;">
     <a href="/reference/{{ t.id }}/download" class="btn secondary">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>
       현재 내용 엑셀로 다운로드
     </a>
-    <span class="muted">받은 엑셀을 그대로 고쳐서 아래에 다시 올리면 됩니다.</span>
+    <span class="info-tip" tabindex="0">!
+      <span class="tip-bubble">받은 엑셀을 그대로 고쳐서 아래에 다시 올리면 됩니다.</span>
+    </span>
   </div>
 
   <form action="/reference/{{ t.id }}/preview" method="post" enctype="multipart/form-data" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">

@@ -20,7 +20,12 @@
   </div>
 
   <div class="card">
-    <h2 style="color:var(--cyan-700);">2. 사업부 선택</h2>
+    <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
+      <h2 style="color:var(--cyan-700); margin:0;">2. 사업부 선택</h2>
+      <span class="info-tip" tabindex="0">!
+        <span class="tip-bubble">파일 이름이 정해진 규칙("YYMMDD 사업부 매출처 주문서.xlsx")과 다르면 사업부를 자동으로 알 수 없습니다. 그런 경우 여기서 직접 골라주세요(카카오톡 선물하기 배송 목록 등).</span>
+      </span>
+    </div>
     <div class="pill-group">
       <input type="radio" id="brand-auto" name="brand" value="" checked>
       <label for="brand-auto" class="pill">자동 감지</label>
@@ -29,7 +34,6 @@
       <label for="brand-{{ b }}" class="pill">{{ b }}</label>
       {% endfor %}
     </div>
-    <div class="muted" style="margin-top:12px;">파일 이름이 정해진 규칙("YYMMDD 사업부 매출처 주문서.xlsx")과 다르면 사업부를 자동으로 알 수 없습니다. 그런 경우 여기서 직접 골라주세요(카카오톡 선물하기 배송 목록 등).</div>
   </div>
 
   <button type="submit" class="btn" style="height:48px; padding:0 26px; margin-bottom:26px;">
