@@ -7,13 +7,13 @@
 import json
 import secrets
 import time
-from pathlib import Path
 
 import bcrypt
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-USERS_PATH = BASE_DIR / "data" / "users.json"
-SECRET_PATH = BASE_DIR / "data" / ".session_secret"
+from src.paths import DATA_DIR
+
+USERS_PATH = DATA_DIR / "users.json"
+SECRET_PATH = DATA_DIR / ".session_secret"
 
 
 def get_session_secret():

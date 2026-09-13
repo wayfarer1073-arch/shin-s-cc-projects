@@ -23,14 +23,21 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import main as pipeline
 from src.archive import ARCHIVE_DIR
+from src import paths
 from src import reference_tables as ref
 from webapp import auth
 from webapp import board
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = BASE_DIR / "output"
-OUTPUT_DIR.mkdir(exist_ok=True)
-STAGING_DIR = BASE_DIR / "data" / "reference" / "_staging"
+
+# 영구 디스크가 붙어 있으면(APP_DATA_DIR 환경변수) 처음 한 번 저장소에
+# 커밋되어 있던 참고자료/이력을 디스크로 복사해 넣는다. 로컬 개발 중에는
+# 아무 일도 하지 않는다(seed_if_empty 안에서 자체적으로 걸러짐).
+paths.seed_if_empty()
+
+OUTPUT_DIR = paths.OUTPUT_DIR
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+STAGING_DIR = paths.REFERENCE_DIR / "_staging"
 STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
 with open(BASE_DIR / "config" / "brands.json", encoding="utf-8") as f:

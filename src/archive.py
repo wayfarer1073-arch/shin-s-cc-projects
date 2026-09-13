@@ -7,8 +7,7 @@
 import json
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-ARCHIVE_DIR = BASE_DIR / "data" / "orders"
+from src.paths import ARCHIVE_DIR
 
 _FIELDS = [
     "order_id", "order_date", "product_name", "option", "quantity",

@@ -5,10 +5,10 @@ data/board.json에 글 목록을 저장한다. 글마다 태그(이슈/공지/�
 import json
 import time
 import uuid
-from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-BOARD_PATH = BASE_DIR / "data" / "board.json"
+from src.paths import DATA_DIR
+
+BOARD_PATH = DATA_DIR / "board.json"
 
 TAGS = ["이슈", "공지", "잡담"]
 TITLE_MAX = 50

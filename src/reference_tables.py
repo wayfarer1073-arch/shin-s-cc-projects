@@ -16,8 +16,8 @@ from pathlib import Path
 
 import openpyxl
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-REFERENCE_DIR = BASE_DIR / "data" / "reference"
+from src.paths import REFERENCE_DIR
+
 BACKUP_DIR = REFERENCE_DIR / "_backups"
 
 

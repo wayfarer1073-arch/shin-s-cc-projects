@@ -1,0 +1,25 @@
+# Render(render.com) 배포 설정 파일.
+#
+# Render 대시보드에서 "New +" -> "Blueprint"로 이 저장소를 연결하면 이 파일을
+# 읽어서 서버를 자동으로 만들어준다(직접 하나하나 설정할 필요 없음).
+#
+# 영구 디스크(appdata)를 /var/data에 붙이고, APP_DATA_DIR 환경변수로
+# 앱이 계정·처리 이력·참고자료·게시판 글을 그 디스크에 저장하도록 한다.
+# 이렇게 해야 코드를 새로 배포해도(재배포될 때마다 컨테이너가 새로
+# 만들어짐) 그동안 쌓인 데이터가 사라지지 않는다.
+services:
+  - type: web
+    name: openmarket-order-app
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn webapp.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: APP_DATA_DIR
+        value: /var/data
+    disk:
+      name: appdata
+      mountPath: /var/data
+      sizeGB: 1
