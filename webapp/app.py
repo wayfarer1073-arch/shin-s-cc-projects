@@ -11,7 +11,7 @@ import io
 import json
 import tempfile
 import uuid
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -27,6 +27,7 @@ from src import paths
 from src import reference_tables as ref
 from src import runs as runs_store
 from src.summary import compute_summary
+from src.writer import VENDORS, write_vendor_file
 from webapp import auth
 from webapp import board
 
@@ -114,11 +115,19 @@ def _run_files(run_date):
     return files
 
 
-def _run_scoped_summary(run):
-    """실행(run) 하나에 포함된 라인만 걸러서 그 실행만의 요약을 계산한다
-    (그 날짜 전체 합산이 아니라 - 업로드한 사람 본인 몫만 정확히 보이도록)."""
+def _can_view_run(user, run):
+    return bool(user["is_admin"] or run["uploaded_by"] == user["username"])
+
+
+def _run_rows(run):
+    """실행(run) 하나에 포함된 라인만 걸러서 반환한다(그 날짜 전체가 아니라)."""
     day_rows = load_orders(run["run_date"], run["run_date"])
-    rows = [r for r in day_rows if r.get("_run_id") == run["run_id"]]
+    return [r for r in day_rows if r.get("_run_id") == run["run_id"]]
+
+
+def _run_scoped_summary(rows, run_date):
+    """실행에 포함된 라인만으로 그 실행만의 요약을 계산한다(그 날짜 전체
+    합산이 아니라 - 업로드한 사람 본인 몫만 정확히 보이도록)."""
     by_vendor = {}
     unclassified = []
     ambiguous = []
@@ -129,7 +138,19 @@ def _run_scoped_summary(run):
             unclassified.append(r)
         else:
             ambiguous.append(r)
-    return compute_summary(rows, by_vendor, unclassified, ambiguous, run["run_date"])
+    return compute_summary(rows, by_vendor, unclassified, ambiguous, run_date)
+
+
+def _run_vendor_brands(rows):
+    """실행에 포함된 라인을 (협력사, 사업부)별로 묶어 건수를 센다 - 이
+    실행에서 발주 파일을 몇 개(협력사×사업부 조합) 내려받을 수 있는지 보여줄 때 쓴다."""
+    counts = {}
+    for r in rows:
+        if r["match_status"] != "classified":
+            continue
+        key = (r["vendor"], r.get("brand") or "JM")
+        counts[key] = counts.get(key, 0) + 1
+    return [{"vendor": v, "brand": b, "count": c} for (v, b), c in sorted(counts.items())]
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -174,10 +195,12 @@ def run_detail(request: Request, run_id: str):
     run = runs_store.get_run(run_id)
     if not run:
         return HTMLResponse("처리 결과를 찾을 수 없습니다.", status_code=404)
-    if not user["is_admin"] and run["uploaded_by"] != user["username"]:
+    if not _can_view_run(user, run):
         return HTMLResponse("본인이 처리한 결과만 볼 수 있습니다.", status_code=403)
 
-    summary = _run_scoped_summary(run)
+    rows = _run_rows(run)
+    summary = _run_scoped_summary(rows, run["run_date"])
+    vendor_brands = _run_vendor_brands(rows)
     is_admin = user["is_admin"]
     files = _run_files(run["run_date"]) if is_admin else []
     review_exists = is_admin and (OUTPUT_DIR / f"확인필요_{run['run_date']}.xlsx").exists()
@@ -189,10 +212,48 @@ def run_detail(request: Request, run_id: str):
             "run": run,
             "run_date": run["run_date"],
             "summary": summary,
+            "vendor_brands": vendor_brands,
             "files": files,
             "review_exists": review_exists,
             "dashboard_exists": dashboard_exists,
         },
+    )
+
+
+@app.get("/runs/{run_id}/vendor/{vendor}/{brand}")
+def run_vendor_download(request: Request, run_id: str, vendor: str, brand: str):
+    """이 실행(run)에서 특정 협력사·사업부로 분류된 주문만 모아 그 자리에서
+    발주 엑셀을 만들어 내려준다 - 본인이 올린 분량에 한정되므로 업로더
+    본인과 관리자만 받을 수 있다(전체 날짜 합산본과는 다름)."""
+    user = _current_user(request)
+    run = runs_store.get_run(run_id)
+    if not run:
+        return HTMLResponse("처리 결과를 찾을 수 없습니다.", status_code=404)
+    if not _can_view_run(user, run):
+        return HTMLResponse("본인이 처리한 결과만 볼 수 있습니다.", status_code=403)
+    if vendor not in VENDORS:
+        return HTMLResponse("알 수 없는 협력사입니다.", status_code=404)
+
+    rows = [
+        dict(r) for r in _run_rows(run)
+        if r["match_status"] == "classified" and r["vendor"] == vendor and (r.get("brand") or "JM") == brand
+    ]
+    if not rows:
+        return HTMLResponse("이 실행에는 해당 협력사·사업부 주문이 없습니다.", status_code=404)
+    for r in rows:
+        if r.get("order_date"):
+            r["order_date"] = datetime.strptime(r["order_date"], "%Y-%m-%d").date()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp) / "vendor.xlsx"
+        write_vendor_file(vendor, rows, tmp_path)
+        content = tmp_path.read_bytes()
+
+    filename = f"{run['run_date'].replace('-', '')}_{vendor}_{brand}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=\"vendor.xlsx\"; filename*=UTF-8''{quote(filename)}"},
     )
 
 
