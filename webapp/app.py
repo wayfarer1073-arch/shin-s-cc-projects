@@ -309,6 +309,8 @@ def reference_download(table_id: str):
 
 @app.post("/reference/{table_id}/preview", response_class=HTMLResponse)
 async def reference_preview(request: Request, table_id: str, file: UploadFile = File(...)):
+    if not _require_admin(request):
+        return HTMLResponse("참고 자료 교체는 관리자만 할 수 있습니다.", status_code=403)
     table = ref.get_table(table_id)
     if not table:
         return HTMLResponse("알 수 없는 참고 자료입니다.", status_code=404)
@@ -344,7 +346,9 @@ async def reference_preview(request: Request, table_id: str, file: UploadFile = 
 
 
 @app.post("/reference/{table_id}/confirm")
-def reference_confirm(table_id: str, token: str = Form(...)):
+def reference_confirm(request: Request, table_id: str, token: str = Form(...)):
+    if not _require_admin(request):
+        return HTMLResponse("참고 자료 교체는 관리자만 할 수 있습니다.", status_code=403)
     table = ref.get_table(table_id)
     if not table:
         return HTMLResponse("알 수 없는 참고 자료입니다.", status_code=404)
@@ -362,7 +366,9 @@ def reference_confirm(table_id: str, token: str = Form(...)):
 
 
 @app.post("/reference/{table_id}/cancel")
-def reference_cancel(table_id: str, token: str = Form(...)):
+def reference_cancel(request: Request, table_id: str, token: str = Form(...)):
+    if not _require_admin(request):
+        return HTMLResponse("참고 자료 교체는 관리자만 할 수 있습니다.", status_code=403)
     staging_path = STAGING_DIR / f"{token}.json"
     staging_path.unlink(missing_ok=True)
     return RedirectResponse(url="/reference", status_code=303)

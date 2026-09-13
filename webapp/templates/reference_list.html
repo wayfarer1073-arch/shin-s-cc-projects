@@ -21,7 +21,7 @@
           <span class="tip-bubble">{{ t.help }}</span>
         </span>
       </div>
-      <div class="muted" style="margin-bottom:2px;">현재 {{ t.count }}건 · {{ t.updated or "갱신 이력 없음" }}</div>
+      <div class="muted" style="margin-bottom:2px;">{{ t.updated or "갱신 이력 없음" }}</div>
     </div>
   </div>
 
@@ -30,11 +30,14 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11l4 4 4-4"/><path d="M5 19h14"/></svg>
       현재 내용 엑셀로 다운로드
     </a>
+    {% if current_user.is_admin %}
     <span class="info-tip" tabindex="0">!
       <span class="tip-bubble">받은 엑셀을 그대로 고쳐서 아래에 다시 올리면 됩니다.</span>
     </span>
+    {% endif %}
   </div>
 
+  {% if current_user.is_admin %}
   <form action="/reference/{{ t.id }}/preview" method="post" enctype="multipart/form-data" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
     <input type="file" name="file" required accept=".xlsx,.xls">
     <button type="submit" class="btn" style="padding:9px 14px;">
@@ -42,8 +45,15 @@
       새 파일 업로드
     </button>
   </form>
+  {% endif %}
 </div>
 {% endfor %}
+
+{% if not current_user.is_admin %}
+<div class="note">
+참고 자료를 새 엑셀로 교체하는 건 관리자만 할 수 있습니다. 현재 내용 다운로드는 누구나 가능합니다.
+</div>
+{% endif %}
 
 <div class="note">
 카탈로그(과거 주문 이력 기반 협력사 배정표)처럼 더 복잡한 자료는 아직 이 화면에서 교체할 수 없습니다. 그런 자료를 바꿔야 하면 별도로 요청해주세요.
