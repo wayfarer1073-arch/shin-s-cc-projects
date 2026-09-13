@@ -507,11 +507,23 @@ def board_create(
     username = request.session.get("username")
     user = auth.find_user(username)
     try:
-        board.create_post(tag, title, body, author=user["display_name"])
+        board.create_post(tag, title, body, author=user["display_name"], author_username=username)
     except ValueError as e:
         return render(
             request, "board.html",
             {"posts": board.list_posts(), "tags": board.TAGS, "error": str(e)},
             status_code=400,
         )
+    return RedirectResponse(url="/board", status_code=303)
+
+
+@app.post("/board/{post_id}/delete")
+def board_delete(request: Request, post_id: str):
+    user = _current_user(request)
+    post = board.get_post(post_id)
+    if not post:
+        return HTMLResponse("글을 찾을 수 없습니다.", status_code=404)
+    if not user["is_admin"] and post.get("author_username") != user["username"]:
+        return HTMLResponse("본인이 작성한 글만 지울 수 있습니다.", status_code=403)
+    board.delete_post(post_id)
     return RedirectResponse(url="/board", status_code=303)

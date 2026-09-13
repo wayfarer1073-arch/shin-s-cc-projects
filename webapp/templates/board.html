@@ -48,6 +48,13 @@
         <span class="muted" style="font-size:11.5px;">{{ p.author }} · {{ p.created_at }}</span>
       </div>
       <div style="font-size:13px; color:var(--text-600); line-height:1.6; white-space:pre-wrap;">{{ p.body }}</div>
+      {% if current_user.is_admin or p.author_username == current_user.username %}
+      <div style="margin-top:10px; text-align:right;">
+        <form action="/board/{{ p.id }}/delete" method="post" onsubmit="return confirm('이 글을 삭제할까요?');">
+          <button type="submit" class="btn gray" style="padding:6px 12px; font-size:12px;">삭제</button>
+        </form>
+      </div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

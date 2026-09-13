@@ -47,7 +47,7 @@ def latest_by_tag():
     return result
 
 
-def create_post(tag, title, body, author):
+def create_post(tag, title, body, author, author_username):
     tag = (tag or "").strip()
     title = (title or "").strip()
     body = (body or "").strip()
@@ -69,6 +69,24 @@ def create_post(tag, title, body, author):
         "title": title,
         "body": body,
         "author": author,
+        "author_username": author_username,
         "created_at": time.strftime("%Y-%m-%d %H:%M"),
     })
     _save(posts)
+
+
+def get_post(post_id):
+    for p in _load():
+        if p["id"] == post_id:
+            return p
+    return None
+
+
+def delete_post(post_id):
+    """지운 글이 있었으면 True, 없으면(이미 지워졌거나 없는 id) False."""
+    posts = _load()
+    remaining = [p for p in posts if p["id"] != post_id]
+    if len(remaining) == len(posts):
+        return False
+    _save(remaining)
+    return True
