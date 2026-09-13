@@ -36,19 +36,19 @@
 {% if summary %}
 {% set need = (summary.unclassified_count or 0) + (summary.ambiguous_count or 0) %}
 <div class="stat-row" style="margin-bottom:20px;">
-  <div class="stat" style="flex:1;">
+  <div class="stat" style="flex:1 1 140px;">
     <div class="num">{{ summary.total_order_count }}건</div>
     <div class="label">전체 주문</div>
   </div>
-  <div class="stat" style="flex:1;">
+  <div class="stat" style="flex:1 1 140px;">
     <div class="num">{{ summary.vendor_order_counts|length }}곳</div>
     <div class="label">협력사</div>
   </div>
-  <div class="stat {% if need > 0 %}flag{% endif %}" style="flex:1;">
+  <div class="stat {% if need > 0 %}flag{% endif %}" style="flex:1 1 140px;">
     <div class="num">{{ need }}건</div>
     <div class="label">확인 필요 (미분류·중복매칭)</div>
   </div>
-  <div class="stat" style="flex:1;">
+  <div class="stat" style="flex:1 1 140px;">
     <div class="num">₩{{ "{:,.0f}".format(summary.total_revenue) }}</div>
     <div class="label">결제금액 합계</div>
   </div>

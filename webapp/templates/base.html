@@ -32,6 +32,11 @@
     --notice-100: oklch(94% 0.06 128);
   }
   * { box-sizing: border-box; }
+  /* 툴팁처럼 visibility:hidden으로 숨겨둔 요소도 레이아웃 폭 계산에는
+     들어가서, 화면 밖으로 넘치면 페이지 전체가 가로 스크롤되는 문제가
+     있었다. html/body에 overflow-x:hidden을 걸어 전체 페이지가 옆으로
+     스크롤되는 일을 원천 차단한다(폭 안에 들어오는 정상 내용에는 영향 없음). */
+  html, body { overflow-x: hidden; }
   body { margin: 0; font-family: "Noto Sans KR", system-ui, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; color: var(--text-900); background: var(--bg); }
   a { color: var(--cyan-700); text-decoration: none; }
   a:hover { color: var(--cyan-600); }
@@ -160,16 +165,75 @@
   .diff-num.up { color: var(--green-600); }
   .diff-num.down { color: var(--red-600); }
 
-  .row-card { display: flex; align-items: center; gap: 16px; padding: 13px 14px; border-radius: 10px; border: 1px solid transparent; }
+  .row-card { display: flex; align-items: center; gap: 16px; padding: 13px 14px; border-radius: 10px; border: 1px solid transparent; flex-wrap: wrap; }
   .row-card:hover { background: var(--surface-2); }
   .icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+
+  .table-scroll { overflow-x: auto; }
+  .auth-card { width: min(400px, 100%); }
+
+  /* --- 모바일(휴대폰 너비) 대응 -------------------------------------- */
+  .mobile-topbar { display: none; }
+  .sidebar-backdrop { display: none; }
+
+  @media (max-width: 860px) {
+    /* 데스크톱에서는 왼쪽에 항상 고정돼 있던 사이드바를, 모바일에서는
+       평소에 화면 밖(왼쪽)에 숨겨두고 상단 메뉴 버튼을 눌러야 슬라이드로
+       나타나는 서랍(drawer) 형태로 바꾼다. */
+    .mobile-topbar {
+      display: flex; align-items: center; gap: 12px; position: fixed; top: 0; left: 0; right: 0; z-index: 30;
+      height: 56px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    .mobile-topbar .menu-btn {
+      width: 38px; height: 38px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface);
+      display: flex; align-items: center; justify-content: center; color: var(--text-600); flex-shrink: 0; cursor: pointer;
+    }
+    .mobile-topbar .title { font-size: 14px; font-weight: 700; }
+
+    .sidebar {
+      transform: translateX(-100%); transition: transform .2s ease; box-shadow: 8px 0 24px rgba(20,30,40,0.12);
+      z-index: 40; width: 78vw; max-width: 300px;
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    .sidebar-backdrop.open {
+      display: block; position: fixed; inset: 0; background: rgba(20,20,30,0.35); z-index: 35;
+    }
+
+    main.content, main.content-standalone { margin-left: 0; }
+    main.content { padding: 72px 16px 40px; }
+    main.content-standalone { padding: 72px 16px 32px; }
+
+    .card { padding: 16px; }
+    h1 { font-size: 19px; }
+
+    /* 좁은 화면에서는 툴팁이 아이콘 위치에 따라 화면 오른쪽으로 넘치기
+       쉬우므로 폭을 줄이고, 아이콘 오른쪽 끝에 맞춰 왼쪽으로 펼치도록
+       바꾼다(overflow-x:hidden과 함께 쓰면 넘치는 일 자체가 없어짐). */
+    .info-tip .tip-bubble { width: 240px; left: auto; right: 0; }
+
+    .stat-row { gap: 10px; }
+    .stat { flex: 1 1 130px; padding: 12px 14px; }
+
+    /* 처리 이력/게시판 등 줄에 날짜+뱃지+버튼이 한 줄로 붙어있던 것을
+       모바일에서는 버튼을 다음 줄로 자연스럽게 내려가게 한다. */
+    .row-card { gap: 8px 10px; }
+    .row-card > a.btn, .row-card > form { margin-left: auto; }
+  }
 </style>
 </head>
 <body>
 {% if current_user %}
 {% set active = self.active_nav() %}
+<div class="mobile-topbar">
+  <button type="button" class="menu-btn" id="mobile-menu-btn" aria-label="메뉴 열기">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  <span class="title">오픈마켓 주문서 처리</span>
+</div>
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 <div class="layout">
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
       <div class="mark">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -240,6 +304,30 @@
   </main>
 {% if current_user %}
 </div>
+<script>
+(function () {
+  var sidebar = document.getElementById("sidebar");
+  var backdrop = document.getElementById("sidebar-backdrop");
+  var menuBtn = document.getElementById("mobile-menu-btn");
+  if (!sidebar || !backdrop || !menuBtn) return;
+
+  function open() {
+    sidebar.classList.add("open");
+    backdrop.classList.add("open");
+  }
+  function close() {
+    sidebar.classList.remove("open");
+    backdrop.classList.remove("open");
+  }
+  menuBtn.addEventListener("click", open);
+  backdrop.addEventListener("click", close);
+  // 메뉴 안의 링크를 누르면(페이지 이동과 별개로) 서랍을 닫아둔다 -
+  // 다음 페이지가 열릴 때 서랍이 열린 채로 남아있지 않도록.
+  sidebar.querySelectorAll("a").forEach(function (a) {
+    a.addEventListener("click", close);
+  });
+})();
+</script>
 {% endif %}
 </body>
 </html>
