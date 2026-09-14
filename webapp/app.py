@@ -27,7 +27,7 @@ from src import paths
 from src import reference_tables as ref
 from src import runs as runs_store
 from src.summary import compute_summary
-from src.writer import VENDORS, write_vendor_file
+from src.writer import VENDORS, write_vendor_file, write_review_file
 from webapp import auth
 from webapp import board
 
@@ -230,6 +230,14 @@ def run_detail(request: Request, run_id: str):
     is_admin = user["is_admin"]
     files = _run_files(run["run_date"]) if is_admin else []
     review_exists = is_admin and (OUTPUT_DIR / f"확인필요_{run['run_date']}.xlsx").exists()
+    # 사업부(브랜드)를 알아야 과거 주문 이력 카탈로그로 정확히 매칭할 수 있는데,
+    # 파일명이 "{YYMMDD} {사업부} {매출처} 주문서.xlsx" 규칙과 다르면(업로드
+    # 시 "자동 감지"를 그대로 두었을 경우) 사업부를 못 얻어 카탈로그 매칭을
+    # 건너뛰고 훨씬 거친 키워드 매칭만 쓰게 된다 - "확인 필요"가 비정상적으로
+    # 많아지는 가장 흔한 원인이라 알아챌 수 있게 알려준다.
+    unclassified_missing_brand = sum(
+        1 for r in rows if r["match_status"] != "classified" and not r.get("brand")
+    )
     dashboard_exists = is_admin and (OUTPUT_DIR / f"dashboard_{run['run_date']}.html").exists()
     return render(
         request,
@@ -242,6 +250,7 @@ def run_detail(request: Request, run_id: str):
             "files": files,
             "review_exists": review_exists,
             "dashboard_exists": dashboard_exists,
+            "unclassified_missing_brand": unclassified_missing_brand,
         },
     )
 
@@ -280,6 +289,43 @@ def run_vendor_download(request: Request, run_id: str, vendor: str, brand: str):
         io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=\"vendor.xlsx\"; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@app.get("/runs/{run_id}/review")
+def run_review_download(request: Request, run_id: str):
+    """이 실행(run)에서 확인이 필요한(미분류·중복매칭) 주문만 모아 그 자리에서
+    엑셀로 내려준다. 협력사 발주 파일과 마찬가지로 본인이 올린 분량에
+    한정되므로 업로더 본인과 관리자만 받을 수 있다 - "그날 전체 합산 확인
+    필요 목록"(관리자 전용, 그날 여러 사람 내용이 섞임)과는 다른 파일이다.
+    전에는 확인 필요 목록이 그 합산본밖에 없어서, 일반 직원은 본인이 올린
+    분량 중 확인이 필요한 게 있어도 아예 받아볼 방법이 없었다."""
+    user = _current_user(request)
+    run = runs_store.get_run(run_id)
+    if not run:
+        return HTMLResponse("처리 결과를 찾을 수 없습니다.", status_code=404)
+    if not _can_view_run(user, run):
+        return HTMLResponse("본인이 처리한 결과만 볼 수 있습니다.", status_code=403)
+
+    rows = [dict(r) for r in _run_rows(run) if r["match_status"] != "classified"]
+    if not rows:
+        return HTMLResponse("이 실행에는 확인이 필요한 주문이 없습니다.", status_code=404)
+    for r in rows:
+        if r.get("order_date"):
+            r["order_date"] = datetime.strptime(r["order_date"], "%Y-%m-%d").date()
+    unclassified = [r for r in rows if r["match_status"] == "unclassified"]
+    ambiguous = [r for r in rows if r["match_status"] == "ambiguous"]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp) / "review.xlsx"
+        write_review_file(unclassified, ambiguous, tmp_path)
+        content = tmp_path.read_bytes()
+
+    filename = f"확인필요_{run['run_date']}_{run_id[:8]}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=\"review.xlsx\"; filename*=UTF-8''{quote(filename)}"},
     )
 
 
