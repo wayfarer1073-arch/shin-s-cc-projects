@@ -33,6 +33,16 @@
 <div class="note" style="margin-bottom:20px;">이 화면은 본인이 업로드한 분량에 대한 결과만 보여줍니다. 협력사에 보낼 발주 파일 전체 합산본과 매출·KPI 대시보드는 관리자만 볼 수 있어요.</div>
 {% endif %}
 
+{% if summary and summary.total_order_count == 0 %}
+<div class="note error" style="margin-bottom:20px;">
+  {% if run.raw_read_count %}
+  업로드한 파일에서 {{ run.raw_read_count }}건을 읽었지만, 전부 오늘 이미 처리된 내용과 완전히 같아서(같은 파일을 다시 올렸거나, 다른 사람이 먼저 올린 것과 같은 내용) 중복으로 판단되어 새로 반영되지 않았습니다. 이미 처리된 내용이라면 정상이고, 그렇지 않다면 관리자에게 문의해주세요.
+  {% else %}
+  업로드한 파일에서 읽어들인 주문 데이터가 없습니다. 파일 형식(헤더 행 이름)이 시스템이 아는 것과 달라서일 수 있습니다 - 관리자에게 파일을 전달해 확인을 요청해주세요.
+  {% endif %}
+</div>
+{% endif %}
+
 {% if summary %}
 {% set need = (summary.unclassified_count or 0) + (summary.ambiguous_count or 0) %}
 <div class="stat-row" style="margin-bottom:20px;">

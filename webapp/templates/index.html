@@ -42,9 +42,9 @@
     </div>
   </div>
 
-  <button type="submit" class="btn" style="height:48px; padding:0 26px; margin-bottom:26px;">
-    처리 시작
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+  <button type="submit" class="btn" id="submit-btn" style="height:48px; padding:0 26px; margin-bottom:26px;">
+    <span id="submit-btn-label">처리 시작</span>
+    <svg id="submit-btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
   </button>
 </form>
 
@@ -74,6 +74,25 @@
     sub.textContent = "다른 파일을 고르려면 다시 클릭하세요";
     dropzone.style.borderColor = "var(--cyan-500)";
   });
+
+  // 파일이 크거나 처리할 양이 많으면 몇 초 이상 걸릴 수 있는데, 버튼이
+  // 그대로 있으면 "눌러도 반응이 없다"로 보인다. 제출하는 순간 버튼을
+  // 비활성화하고 진행 중 표시로 바꿔서, 실제로는 처리 중이라는 걸
+  // 알 수 있게 하고 중복 클릭도 막는다.
+  var form = document.querySelector('form[action="/process"]');
+  var submitBtn = document.getElementById("submit-btn");
+  var submitLabel = document.getElementById("submit-btn-label");
+  var submitArrow = document.getElementById("submit-btn-arrow");
+  if (form && submitBtn && submitLabel && submitArrow) {
+    form.addEventListener("submit", function () {
+      submitBtn.disabled = true;
+      submitLabel.textContent = "처리 중입니다... 잠시만 기다려주세요";
+      submitArrow.style.display = "none";
+      var spinner = document.createElement("span");
+      spinner.className = "btn-spinner";
+      submitBtn.appendChild(spinner);
+    });
+  }
 })();
 </script>
 

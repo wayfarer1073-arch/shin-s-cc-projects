@@ -87,6 +87,7 @@ def run(input_paths, out_dir, brand_override=None, uploaded_by=None):
         order_count=len(this_run_saved_rows),
         unclassified_count=sum(1 for r in this_run_saved_rows if r["match_status"] == "unclassified"),
         ambiguous_count=sum(1 for r in this_run_saved_rows if r["match_status"] == "ambiguous"),
+        raw_read_count=len(all_rows),
     )
 
     all_rows = []

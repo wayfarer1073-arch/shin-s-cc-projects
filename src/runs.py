@@ -36,7 +36,12 @@ def _save(runs):
         json.dump(runs, f, ensure_ascii=False, indent=2)
 
 
-def record_run(run_id, run_date, uploaded_by, filenames, order_count, unclassified_count, ambiguous_count):
+def record_run(run_id, run_date, uploaded_by, filenames, order_count, unclassified_count, ambiguous_count, raw_read_count=None):
+    """raw_read_count: 업로드한 파일에서 실제로 읽어들인 줄 수(중복 제거 전).
+    order_count(이 실행에서 새로 보관된 줄 수)가 0인데 raw_read_count는 0보다
+    크면 "파일은 읽었지만 전부 이미 처리된 내용과 중복"이라는 뜻이고, raw_read_count도
+    0이면 "파일에서 아예 아무 줄도 못 읽었다"는 뜻이라 원인이 다르다 - 처리 결과
+    화면에서 이 둘을 구분해 보여준다."""
     runs = _load()
     runs.append({
         "run_id": run_id,
@@ -47,6 +52,7 @@ def record_run(run_id, run_date, uploaded_by, filenames, order_count, unclassifi
         "order_count": order_count,
         "unclassified_count": unclassified_count,
         "ambiguous_count": ambiguous_count,
+        "raw_read_count": raw_read_count,
     })
     _save(runs)
 
