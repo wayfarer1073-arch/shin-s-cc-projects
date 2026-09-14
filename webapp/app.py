@@ -154,14 +154,28 @@ def _run_vendor_brands(rows):
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
+def index(request: Request, error: str = ""):
     user = _current_user(request)
     owner = None if user["is_admin"] else user["username"]
     recent = runs_store.list_runs(uploaded_by=owner)[:14]
     return render(
         request,
         "index.html",
-        {"brands": BRAND_LABELS, "recent": recent, "today": date.today().isoformat()},
+        {"brands": BRAND_LABELS, "recent": recent, "today": date.today().isoformat(), "error": error or None},
+    )
+
+
+def _upload_error(request: Request, message: str):
+    """업로드 실패 시 그냥 빈 화면(500 에러)이나 아무 설명 없는 재이동으로
+    끝나지 않도록, 업로드 화면에 이유를 보여주며 돌아간다."""
+    user = _current_user(request)
+    owner = None if user["is_admin"] else user["username"]
+    recent = runs_store.list_runs(uploaded_by=owner)[:14]
+    return render(
+        request,
+        "index.html",
+        {"brands": BRAND_LABELS, "recent": recent, "today": date.today().isoformat(), "error": message},
+        status_code=400,
     )
 
 
@@ -175,16 +189,28 @@ async def process(request: Request, files: list[UploadFile] = File(...), brand: 
                 continue
             dest = Path(tmp) / uf.filename
             content = await uf.read()
+            if not content:
+                continue
             dest.write_bytes(content)
             saved_paths.append(str(dest))
 
         if not saved_paths:
-            return RedirectResponse(url="/", status_code=303)
+            return _upload_error(
+                request,
+                "업로드된 파일을 찾을 수 없습니다. 파일 선택 창에서 xlsx/xls 파일을 다시 선택한 뒤 시도해주세요.",
+            )
 
         brand_override = brand or None
-        run_id, written, review_path, summary_path, dashboard_path = pipeline.run(
-            saved_paths, OUTPUT_DIR, brand_override=brand_override, uploaded_by=username
-        )
+        try:
+            run_id, written, review_path, summary_path, dashboard_path = pipeline.run(
+                saved_paths, OUTPUT_DIR, brand_override=brand_override, uploaded_by=username
+            )
+        except Exception as e:
+            # 원본 형식이 낯설거나(헤더를 못 찾음) 손상된 파일이면 여기서 실패하는데,
+            # 예전에는 빈 500 에러 화면만 뜨고 아무 파일도 저장되지 않아 사용자
+            # 입장에서는 "업로드했는데 아무 반응이 없다"로 보였다. 이유를 그대로
+            # 보여줘서 어떤 파일이 문제인지 알 수 있게 한다.
+            return _upload_error(request, f"주문서 처리 중 문제가 발생했습니다: {e}")
 
     return RedirectResponse(url=f"/runs/{run_id}", status_code=303)
 
