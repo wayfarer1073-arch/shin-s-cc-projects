@@ -330,13 +330,11 @@ def run_review_download(request: Request, run_id: str):
 
 
 def _can_delete_run(user, run):
-    """실행을 지울 수 있는지: 그 실행을 올린 본인만 가능하다(다른 사람이
-    올린 건 관리자도 못 지움 - 협력사 발주 파일이 이미 나가있을 수도 있는
-    민감한 작업이라, "그 작업을 한 개인"으로 확실히 좁혀둔다). 다만 이
-    기능을 만들기 전 이력(uploaded_by가 없는 "레거시 실행")은 주인을
-    알 수 없으니 예외적으로 관리자만 지울 수 있게 한다."""
-    if run["uploaded_by"] is None:
-        return bool(user["is_admin"])
+    """실행을 지울 수 있는지: 그 실행을 올린 본인, 또는 관리자만 가능하다
+    (다른 게시판/자료 삭제와 같은 권한 모델). 주인을 알 수 없는 옛
+    이력(uploaded_by가 없는 "레거시 실행")도 관리자는 지울 수 있다."""
+    if user["is_admin"]:
+        return True
     return run["uploaded_by"] == user["username"]
 
 

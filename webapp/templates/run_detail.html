@@ -2,7 +2,7 @@
 {% block active_nav %}history{% endblock %}
 {% block content %}
 {% set need = ((summary.unclassified_count or 0) + (summary.ambiguous_count or 0)) if summary else 0 %}
-{% set can_delete = (run.uploaded_by == current_user.username) or (run.uploaded_by is none and current_user.is_admin) %}
+{% set can_delete = current_user.is_admin or (run.uploaded_by == current_user.username) %}
 <div style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--text-400); margin-bottom:14px;">
   <a href="/runs" style="color:var(--text-400); display:flex; align-items:center; gap:4px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
