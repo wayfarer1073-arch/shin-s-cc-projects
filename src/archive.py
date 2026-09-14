@@ -60,6 +60,26 @@ def archive_orders(by_vendor, unclassified, ambiguous, run_date, archive_dir=ARC
     return out_path
 
 
+def delete_run_rows(run_id, run_date, archive_dir=ARCHIVE_DIR):
+    """그 실행(run_id)에 속한 보관 라인만 그 날짜 보관본에서 지운다(잘못된
+    사업부 선택 등으로 실행을 통째로 되돌리고 싶을 때 - 지운 뒤에는 같은
+    원본 파일을 다시 올려도 중복으로 걸리지 않고 새로 처리된다).
+    반환: 그 날짜에 남은 전체 라인(다른 실행분 포함) - 호출 쪽에서 이걸로
+    그날 산출물(발주 파일/확인 필요/대시보드)을 다시 만드는 데 쓴다."""
+    archive_dir = Path(archive_dir)
+    out_path = archive_dir / f"{run_date}.json"
+    if not out_path.exists():
+        return []
+    with open(out_path, encoding="utf-8") as f:
+        rows = json.load(f)
+    remaining = [r for r in rows if r.get("_run_id") != run_id]
+    if len(remaining) == len(rows):
+        return remaining
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(remaining, f, ensure_ascii=False, indent=2)
+    return remaining
+
+
 def load_orders(start_date, end_date, vendor=None, brand=None, archive_dir=ARCHIVE_DIR):
     """start_date~end_date(둘 다 포함, "YYYY-MM-DD") 사이에 보관된 주문 라인을 불러온다.
     vendor를 지정하면 그 협력사로 분류된 것만, brand를 지정하면 그 브랜드 것만 반환한다."""

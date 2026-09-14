@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 import main as pipeline
-from src.archive import load_orders
+from src.archive import load_orders, delete_run_rows
 from src import paths
 from src import reference_tables as ref
 from src import runs as runs_store
@@ -327,6 +327,38 @@ def run_review_download(request: Request, run_id: str):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=\"review.xlsx\"; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+def _can_delete_run(user, run):
+    """실행을 지울 수 있는지: 그 실행을 올린 본인만 가능하다(다른 사람이
+    올린 건 관리자도 못 지움 - 협력사 발주 파일이 이미 나가있을 수도 있는
+    민감한 작업이라, "그 작업을 한 개인"으로 확실히 좁혀둔다). 다만 이
+    기능을 만들기 전 이력(uploaded_by가 없는 "레거시 실행")은 주인을
+    알 수 없으니 예외적으로 관리자만 지울 수 있게 한다."""
+    if run["uploaded_by"] is None:
+        return bool(user["is_admin"])
+    return run["uploaded_by"] == user["username"]
+
+
+@app.post("/runs/{run_id}/delete")
+def run_delete(request: Request, run_id: str):
+    """실행 하나를 통째로 되돌린다 - 예를 들어 사업부를 잘못 고른 채로
+    처리해버린 경우, 이 실행에서 보관된 줄을 전부 지워서 같은 원본 파일을
+    다시 올려도 중복으로 걸리지 않고 새로 처리되게 한다. 지운 뒤에는 그날
+    남은 내용(다른 실행분)만으로 발주 파일/확인 필요 목록/대시보드를 다시
+    만들어서, 지운 실행의 내용이 다운로드 파일에 유령처럼 남지 않게 한다."""
+    user = _current_user(request)
+    run = runs_store.get_run(run_id)
+    if not run:
+        return HTMLResponse("처리 결과를 찾을 수 없습니다.", status_code=404)
+    if not _can_delete_run(user, run):
+        return HTMLResponse("본인이 처리한 결과만 지울 수 있습니다.", status_code=403)
+
+    remaining_day_rows = delete_run_rows(run_id, run["run_date"])
+    runs_store.delete_run(run_id)
+    pipeline.rebuild_day_outputs(remaining_day_rows, run["run_date"], OUTPUT_DIR)
+
+    return RedirectResponse(url="/runs", status_code=303)
 
 
 @app.get("/runs", response_class=HTMLResponse)

@@ -90,6 +90,22 @@ def run(input_paths, out_dir, brand_override=None, uploaded_by=None):
         raw_read_count=len(all_rows),
     )
 
+    written, review_path, summary_path, dashboard_path = rebuild_day_outputs(day_rows, run_date, out_dir)
+    return run_id, written, review_path, summary_path, dashboard_path
+
+
+def rebuild_day_outputs(day_rows, run_date, out_dir):
+    """그날 보관된 전체 라인(day_rows)만으로 협력사별 발주 파일/확인 필요
+    목록/요약/대시보드를 (다시) 만든다. run()이 새로 처리한 뒤에 쓰는 것과
+    같은 로직인데, 실행(run) 하나를 지워서 그날 보관 내용이 줄어든 뒤에도
+    "지금 남은 내용 기준"으로 다시 만들 수 있도록 분리했다 - 그래야 지운
+    실행에 있던 내용이 다운로드 파일에 유령처럼 남지 않는다.
+
+    이전에 만들어졌지만 이번에는 해당하는 협력사·사업부 조합이 하나도 없는
+    파일(더 이상 아무 줄도 없는 파일)은 지운다(stale 파일 방지)."""
+    out_dir = Path(out_dir)
+    run_date_compact = run_date.replace("-", "")
+
     all_rows = []
     by_vendor = {}
     unclassified = []
@@ -106,6 +122,7 @@ def run(input_paths, out_dir, brand_override=None, uploaded_by=None):
             ambiguous.append(r)
 
     written = []
+    expected_filenames = set()
     highlight_totals = {"quantity": 0, "duplicate_address": 0, "both": 0, "name_pair_unmatched": 0}
     for vendor, rows in by_vendor.items():
         # 브랜드별로 나눠서 각각 별도 파일로 작성한다 — 파일명 규칙(가공 지침 8번)이
@@ -119,6 +136,7 @@ def run(input_paths, out_dir, brand_override=None, uploaded_by=None):
         for brand, brand_rows in by_brand.items():
             file_brand = VENDORS[vendor].get("file_brand_override") or brand
             out_path = out_dir / f"{run_date_compact}_{vendor}_{file_brand}.xlsx"
+            expected_filenames.add(out_path.name)
             _, highlight_counts = write_vendor_file(vendor, brand_rows, out_path)
             written.append(out_path)
             for k, v in highlight_counts.items():
@@ -135,11 +153,19 @@ def run(input_paths, out_dir, brand_override=None, uploaded_by=None):
             mark_note = f" ({', '.join(marks)} 강조표시)" if marks else ""
             print(f"[작성] {vendor} ({brand}): {len(brand_rows)}건 -> {out_path}{mark_note}")
 
-    review_path = None
+    # 이번엔 더 이상 해당하는 줄이 없는 협력사·사업부 조합의 예전 파일은 지운다.
+    for stale in out_dir.glob(f"{run_date_compact}_*.xlsx"):
+        if stale.name not in expected_filenames:
+            stale.unlink(missing_ok=True)
+            print(f"[정리] 더 이상 내용이 없는 파일 삭제 -> {stale}")
+
+    review_path = out_dir / f"확인필요_{run_date}.xlsx"
     if unclassified or ambiguous:
-        review_path = out_dir / f"확인필요_{run_date}.xlsx"
         write_review_file(unclassified, ambiguous, review_path)
         print(f"[확인 필요] 미분류 {len(unclassified)}건, 중복매칭 {len(ambiguous)}건 -> {review_path}")
+    else:
+        review_path.unlink(missing_ok=True)
+        review_path = None
 
     # --- 원본 대조: 누락 건 및 특이사항 조사 ---
     reconciliation = check_no_omission(all_rows, by_vendor, unclassified, ambiguous)
@@ -174,7 +200,7 @@ def run(input_paths, out_dir, brand_override=None, uploaded_by=None):
     dashboard_path.write_text(render_dashboard_html(summary), encoding="utf-8")
     print(f"[대시보드] -> {dashboard_path}")
 
-    return run_id, written, review_path, summary_path, dashboard_path
+    return written, review_path, summary_path, dashboard_path
 
 
 def main():

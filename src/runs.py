@@ -77,6 +77,16 @@ def get_run(run_id):
     return None
 
 
+def delete_run(run_id):
+    """실행 기록 하나를 지운다. 지웠으면 True, 원래 없었으면 False."""
+    runs = _load()
+    remaining = [r for r in runs if r["run_id"] != run_id]
+    if len(remaining) == len(runs):
+        return False
+    _save(remaining)
+    return True
+
+
 def backfill_legacy_runs(archive_dir=ARCHIVE_DIR):
     """이 기능을 만들기 전에 이미 보관돼 있던 주문 라인(_run_id가 없는 것)에
     날짜별로 하나씩 "레거시 실행"을 만들어 붙여준다 - 예전 이력이 화면에서

@@ -2,6 +2,7 @@
 {% block active_nav %}history{% endblock %}
 {% block content %}
 {% set need = ((summary.unclassified_count or 0) + (summary.ambiguous_count or 0)) if summary else 0 %}
+{% set can_delete = (run.uploaded_by == current_user.username) or (run.uploaded_by is none and current_user.is_admin) %}
 <div style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--text-400); margin-bottom:14px;">
   <a href="/runs" style="color:var(--text-400); display:flex; align-items:center; gap:4px;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
@@ -182,5 +183,16 @@
 </div>
 {% endif %}
 
-<a href="/" class="btn secondary">← 업로드 화면으로</a>
+<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+  <a href="/" class="btn secondary">← 업로드 화면으로</a>
+  {% if can_delete %}
+  <form action="/runs/{{ run.run_id }}/delete" method="post"
+    onsubmit="return confirm('이 실행을 삭제하면 여기서 보관된 주문 내용이 전부 지워지고, 이미 내려받은 발주 파일이 있어도 그 파일은 되돌릴 수 없습니다. 같은 원본 파일은 다시 올려서 새로 처리할 수 있습니다. 정말 삭제할까요?');">
+    <button type="submit" class="btn gray">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
+      이 실행 삭제
+    </button>
+  </form>
+  {% endif %}
+</div>
 {% endblock %}
